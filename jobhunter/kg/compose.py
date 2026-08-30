@@ -1,0 +1,143 @@
+"""Compose an architecture from the graph: for each pipeline stage, the best feature
+across every draft, for a given problem statement.
+
+This is the "give me ten architectures, take the best piece of each" operation, done
+deterministically over the context layer rather than by asking a model. Each feature
+is scored on four things the graph already knows:
+
+    relevance   how well the feature's text matches the statement (FTS, bm25)
+    fit         how many of the named constraints / guarantees it SERVES
+    status      built > gap > open > dropped — evidence beats intention
+    consensus   how many independent drafts PROPOSE it
+
+The weights are visible in the output so the ranking can be argued with.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+
+from jobhunter.kg.store import Graph
+
+STATUS_WEIGHT = {"built": 1.0, "partial": 0.85, "gap": 0.75, "open": 0.5, "dropped": 0.0}
+WEIGHTS = {"relevance": 0.40, "fit": 0.30, "status": 0.20, "consensus": 0.10}
+
+
+def _index_context(g: Graph) -> tuple[dict[str, dict], dict[str, list[dict]], dict[str, list[dict]]]:
+    nodes = {n["id"]: n for n in g.nodes(layer="context")}
+    out_edges: dict[str, list[dict]] = defaultdict(list)
+    in_edges: dict[str, list[dict]] = defaultdict(list)
+    for e in g.all_edges(layer="context"):
+        out_edges[e["src"]].append(e)
+        in_edges[e["dst"]].append(e)
+    return nodes, out_edges, in_edges
+
+
+def default_statement(g: Graph) -> str:
+    """The problem node plus its sub-problems, as the statement to compose against."""
+    parts = []
+    # the root problem (no `order`) first, then its sub-problems in order
+    problems = sorted(g.nodes(kind="problem"), key=lambda n: (n["props"].get("order") is not None, n["props"].get("order") or 0))
+    for n in problems:
+        parts.append(n["label"])
+        if n.get("summary"):
+            parts.append(n["summary"])
+    return "\n".join(parts)
+
+
+def compose(
+    statement: str | None = None,
+    *,
+    constraints: list[str] | None = None,
+    top: int = 2,
+    include_dropped: bool = False,
+) -> dict:
+    with Graph() as g:
+        statement = statement or default_statement(g)
+        nodes, out_e, in_e = _index_context(g)
+
+        features = [n for n in nodes.values() if n["kind"] == "feature"]
+        wanted = set(constraints or [])
+        if not wanted:
+            # nothing named: every constraint and guarantee counts, so "serves more" wins
+            wanted = {n["id"] for n in nodes.values() if n["kind"] in ("constraint", "guarantee")}
+
+        # relevance: bm25 over feature nodes, OR-joined so partial overlap still ranks
+        hits = g.search(statement, kinds=["feature"], limit=len(features) or 1, mode="or")
+        max_rank = max((h["rank"] for h in hits), default=0.0) or 1.0
+        relevance = {h["id"]: h["rank"] / max_rank for h in hits}
+
+        max_consensus = max(
+            (sum(1 for e in in_e[f["id"]] if e["rel"] == "PROPOSES") for f in features), default=1
+        ) or 1
+
+        scored: list[dict] = []
+        for f in features:
+            status = (f["props"].get("status") or "open").lower()
+            if status == "dropped" and not include_dropped:
+                continue
+            serves = [e["dst"] for e in out_e[f["id"]] if e["rel"] == "SERVES"]
+            fit_hits = [s for s in serves if s in wanted]
+            fit = min(1.0, len(fit_hits) / max(1, min(3, len(wanted))))
+            proposers = [e["src"] for e in in_e[f["id"]] if e["rel"] == "PROPOSES"]
+            consensus = len(proposers) / max_consensus
+            rel = relevance.get(f["id"], 0.0)
+            st = STATUS_WEIGHT.get(status, 0.5)
+            total = (
+                WEIGHTS["relevance"] * rel
+                + WEIGHTS["fit"] * fit
+                + WEIGHTS["status"] * st
+                + WEIGHTS["consensus"] * consensus
+            )
+            stage = next((e["dst"] for e in out_e[f["id"]] if e["rel"] == "AT_STAGE"), None)
+            decided = [
+                {"decision": e["src"], "verdict": e["rel"].lower()}
+                for e in in_e[f["id"]] if e["rel"] in ("ADOPTS", "REJECTS", "DEFERS")
+            ]
+            scored.append(
+                {
+                    "id": f["id"],
+                    "label": f["label"],
+                    "summary": f.get("summary"),
+                    "status": status,
+                    "stage": stage,
+                    "score": round(total, 3),
+                    "breakdown": {
+                        "relevance": round(rel, 2), "fit": round(fit, 2),
+                        "status": st, "consensus": round(consensus, 2),
+                    },
+                    "serves": fit_hits,
+                    "proposed_by": [nodes[p]["label"] if p in nodes else p for p in proposers],
+                    "decided": decided,
+                    "modules": [e["dst"] for e in out_e[f["id"]] if e["rel"] == "IMPLEMENTED_IN"],
+                }
+            )
+
+        by_stage: dict[str | None, list[dict]] = defaultdict(list)
+        for s in scored:
+            by_stage[s["stage"]].append(s)
+
+        def stage_order(sid: str | None) -> float:
+            if sid is None:
+                return 1e9
+            return float(nodes.get(sid, {}).get("props", {}).get("order", 1e8))
+
+        stages = []
+        for sid in sorted(by_stage, key=stage_order):
+            picks = sorted(by_stage[sid], key=lambda s: -s["score"])
+            stages.append(
+                {
+                    "stage": sid,
+                    "label": nodes[sid]["label"] if sid and sid in nodes else "(unstaged)",
+                    "picks": picks[:top],
+                    "also_considered": [{"id": p["id"], "score": p["score"], "status": p["status"]} for p in picks[top:]],
+                }
+            )
+
+        return {
+            "statement": statement,
+            "constraints": sorted(wanted) if constraints else "(all constraints + guarantees)",
+            "weights": WEIGHTS,
+            "features_considered": len(scored),
+            "stages": stages,
+        }

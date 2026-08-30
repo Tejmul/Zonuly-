@@ -1,0 +1,263 @@
+"""Render the graph into knowledge/BRIEF.md — the handoff a fresh session reads first.
+
+Everything in it is derived: live counts from the tables, the context layer from the
+graph. Regenerate rather than edit. If something in it is wrong, fix context.yaml or
+add a `kg note` and rebuild.
+"""
+
+from __future__ import annotations
+
+import re
+from collections import defaultdict
+from datetime import datetime
+
+from jobhunter import ROOT
+from jobhunter.kg.store import Graph
+
+BRIEF_PATH = ROOT / "knowledge" / "BRIEF.md"
+
+
+def _live_counts() -> dict:
+    from sqlmodel import func, select
+
+    from jobhunter.db import Company, Contact, Email, Job, Reply, get_session
+
+    with get_session() as s:
+        def count(model, *where):
+            stmt = select(func.count()).select_from(model)
+            for w in where:
+                stmt = stmt.where(w)
+            return s.exec(stmt).one()
+
+        by_status = dict(s.exec(select(Job.status, func.count()).group_by(Job.status)).all())
+        by_source = dict(s.exec(select(Job.source, func.count()).group_by(Job.source)).all())
+        by_conf = dict(s.exec(select(Contact.confidence, func.count()).group_by(Contact.confidence)).all())
+        email_status = dict(s.exec(select(Email.status, func.count()).group_by(Email.status)).all())
+        reply_sent = dict(s.exec(select(Reply.sentiment, func.count()).group_by(Reply.sentiment)).all())
+        top = s.exec(
+            select(Job).where(Job.status == "high_match").order_by(Job.match_score.desc()).limit(8)  # type: ignore[union-attr]
+        ).all()
+        return {
+            "companies": count(Company),
+            "jobs": count(Job),
+            "scored": count(Job, Job.match_score.is_not(None)),  # type: ignore[union-attr]
+            "by_status": by_status,
+            "by_source": by_source,
+            "contacts": count(Contact),
+            "by_confidence": by_conf,
+            "emails": email_status,
+            "replies": reply_sent,
+            "top": [(j.id, j.match_score, j.title, j.company_name) for j in top],
+        }
+
+
+def render() -> str:
+    with Graph() as g:
+        nodes = {n["id"]: n for n in g.nodes(layer="context")}
+        out_e: dict[str, list[dict]] = defaultdict(list)
+        in_e: dict[str, list[dict]] = defaultdict(list)
+        for e in g.all_edges(layer="context"):
+            out_e[e["src"]].append(e)
+            in_e[e["dst"]].append(e)
+        stats = g.stats()
+
+    def by_kind(kind: str) -> list[dict]:
+        return [n for n in nodes.values() if n["kind"] == kind]
+
+    def label(nid: str) -> str:
+        return nodes[nid]["label"] if nid in nodes else nid
+
+    def order(n: dict, key: str = "order", default: float = 1e9) -> float:
+        v = n["props"].get(key)
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    try:
+        live = _live_counts()
+    except Exception as e:  # noqa: BLE001 — the brief must render even with an empty DB
+        live = {"error": str(e)}
+
+    L: list[str] = []
+    L.append("# ZoNuLy — context brief")
+    L.append("")
+    L.append(f"> Generated {datetime.now().isoformat(timespec='minutes')} from the knowledge graph "
+             f"({stats['nodes']} nodes, {stats['edges']} edges). Do not edit — run `python scripts/run.py kg brief`.")
+    L.append("> To query: `kg search <text>` · `kg show <id>` · `kg path <a> <b>` · `kg compose \"<problem>\"` · "
+             "to remember: `kg note \"<what changed>\" --about <id>`.")
+    L.append("")
+
+    # ---- problem
+    probs = sorted(by_kind("problem"), key=lambda n: order(n, default=0))
+    root = next((p for p in probs if not out_e[p["id"]] or all(e["rel"] != "PART_OF" for e in out_e[p["id"]])), None)
+    if root:
+        L.append("## The problem")
+        L.append("")
+        L.append(root.get("summary") or root["label"])
+        L.append("")
+        for p in probs:
+            if p is root:
+                continue
+            L.append(f"- **{p['label']}** — {p.get('summary') or ''}".rstrip(" —"))
+        L.append("")
+
+    # ---- live status
+    L.append("## Where the pipeline is right now (live)")
+    L.append("")
+    if "error" in live:
+        L.append(f"_(could not read the database: {live['error']})_")
+    else:
+        L.append(f"- **{live['jobs']}** jobs from {len(live['by_source'])} sources "
+                 f"({', '.join(f'{k} {v}' for k, v in sorted(live['by_source'].items(), key=lambda kv: -kv[1]))})")
+        L.append(f"- **{live['scored']}** scored · status: " + ", ".join(f"{k} {v}" for k, v in live["by_status"].items()))
+        L.append(f"- **{live['companies']}** companies · **{live['contacts']}** contacts "
+                 f"({', '.join(f'{k} {v}' for k, v in live['by_confidence'].items()) or 'none'})")
+        L.append(f"- emails: {', '.join(f'{k} {v}' for k, v in live['emails'].items()) or 'none'} · "
+                 f"replies: {', '.join(f'{k or 'unclassified'} {v}' for k, v in live['replies'].items()) or 'none'}")
+        if live["top"]:
+            L.append("- top matches: " + "; ".join(f"[{s}] {t} @ {c} (job:{i})" for i, s, t, c in live["top"]))
+    L.append("")
+
+    # ---- constraints & guarantees
+    cons = sorted(by_kind("constraint"), key=lambda n: order(n, default=50))
+    guar = sorted(by_kind("guarantee"), key=lambda n: order(n, default=50))
+    if cons or guar:
+        L.append("## Constraints and guarantees (never cut)")
+        L.append("")
+        for n in cons:
+            L.append(f"- `{n['id']}` **{n['label']}** — {n.get('summary') or ''}")
+        for n in guar:
+            enforced = [label(e["dst"]) for e in out_e[n["id"]] if e["rel"] == "ENFORCED_BY"]
+            tail = f" _(enforced by: {', '.join(enforced)})_" if enforced else ""
+            L.append(f"- `{n['id']}` **{n['label']}** — {n.get('summary') or ''}{tail}")
+        L.append("")
+
+    # ---- decisions
+    def natural(n: dict) -> tuple:
+        m = re.search(r"(\d+)", n["id"])
+        return (int(m.group(1)) if m else 1e9, n["id"])
+
+    decs = sorted(by_kind("decision"), key=natural)
+    if decs:
+        L.append("## Settled decisions")
+        L.append("")
+        for d in decs:
+            adopts = [label(e["dst"]) for e in out_e[d["id"]] if e["rel"] == "ADOPTS"]
+            rejects = [label(e["dst"]) for e in out_e[d["id"]] if e["rel"] == "REJECTS"]
+            L.append(f"- **{d['label']}** (`{d['id']}`) — {d.get('summary') or ''}")
+            if adopts:
+                L.append(f"  - adopts: {'; '.join(adopts)}")
+            if rejects:
+                L.append(f"  - rejects: {'; '.join(rejects)}")
+        L.append("")
+
+    # ---- features by stage
+    stages = sorted(by_kind("stage"), key=lambda n: order(n))
+    feats = by_kind("feature")
+    if stages and feats:
+        L.append("## What exists, by stage")
+        L.append("")
+        stage_of = {}
+        for f in feats:
+            stage_of[f["id"]] = next((e["dst"] for e in out_e[f["id"]] if e["rel"] == "AT_STAGE"), None)
+        for st in stages + [None]:
+            sid = st["id"] if st else None
+            mine = sorted((f for f in feats if stage_of.get(f["id"]) == sid), key=lambda f: f["label"])
+            if not mine:
+                continue
+            L.append(f"### {st['label'] if st else 'Cross-cutting'}" + (f" — {st.get('summary')}" if st and st.get("summary") else ""))
+            for f in mine:
+                status = (f["props"].get("status") or "open").upper()
+                mods = [e["dst"].split(":", 1)[1] for e in out_e[f["id"]] if e["rel"] == "IMPLEMENTED_IN"]
+                src = [label(e["src"]) for e in in_e[f["id"]] if e["rel"] == "PROPOSES"]
+                line = f"- **[{status}]** {f['label']} — {f.get('summary') or ''}"
+                if mods:
+                    line += f" _(in {', '.join(mods)})_"
+                if src:
+                    line += f" _(from: {', '.join(src)})_"
+                L.append(line)
+            L.append("")
+
+    # ---- gaps
+    gaps = sorted(by_kind("gap"), key=lambda n: order(n, "priority"))
+    if gaps:
+        L.append("## Gaps, in build order")
+        L.append("")
+        for gp in gaps:
+            builds = [label(e["dst"]) for e in out_e[gp["id"]] if e["rel"] == "WOULD_BUILD"]
+            protects = [label(e["dst"]) for e in out_e[gp["id"]] if e["rel"] == "PROTECTS"]
+            pr = gp["props"].get("priority")
+            L.append(f"{int(pr) if pr is not None else '-'}. **{gp['label']}** (`{gp['id']}`) — {gp.get('summary') or ''}")
+            if builds:
+                L.append(f"   - builds: {'; '.join(builds)}")
+            if protects:
+                L.append(f"   - protects: {'; '.join(protects)}")
+        L.append("")
+
+    # ---- failure modes
+    fails = sorted(by_kind("failure"), key=lambda n: order(n, "likelihood"))
+    if fails:
+        L.append("## Failure modes, most likely first")
+        L.append("")
+        for f in fails:
+            mit = [label(e["dst"]) for e in out_e[f["id"]] if e["rel"] == "MITIGATED_BY"]
+            L.append(f"- **{f['label']}** — {f.get('summary') or ''}" + (f" _(mitigated by: {', '.join(mit)})_" if mit else ""))
+        L.append("")
+
+    # ---- open questions
+    qs = sorted(by_kind("question"), key=lambda n: n["id"])
+    if qs:
+        L.append("## Still open")
+        L.append("")
+        for q in qs:
+            L.append(f"- **{q['label']}** — {q.get('summary') or ''}")
+        L.append("")
+
+    # ---- architectures
+    archs = sorted(by_kind("arch"), key=lambda n: (n["props"].get("date") or "", n["id"]))
+    if archs:
+        L.append("## The architecture drafts and what each contributed")
+        L.append("")
+        for a in archs:
+            proposed = [e["dst"] for e in out_e[a["id"]] if e["rel"] == "PROPOSES"]
+            statuses = defaultdict(int)
+            for fid in proposed:
+                statuses[(nodes.get(fid, {}).get("props", {}).get("status") or "open")] += 1
+            tally = ", ".join(f"{v} {k}" for k, v in sorted(statuses.items()))
+            sup = [label(e["dst"]) for e in out_e[a["id"]] if e["rel"] == "SUPERSEDES"]
+            L.append(f"- **{a['label']}** (`{a['props'].get('file', '')}`) — {a.get('summary') or ''}")
+            L.append(f"  - proposed {len(proposed)} features: {tally}" + (f" · supersedes {', '.join(sup)}" if sup else ""))
+        L.append("")
+
+    # ---- modules
+    mods = sorted(by_kind("module"), key=lambda n: (order(n, "layer_order", 9), n["id"]))
+    if mods:
+        L.append("## Module map (nothing imports upward)")
+        L.append("")
+        for m in mods:
+            deps = [e["dst"].split(":", 1)[1] for e in out_e[m["id"]] if e["rel"] == "DEPENDS_ON"]
+            L.append(f"- `{m['props'].get('path', m['id'])}` — {m.get('summary') or m['label']}" + (f" → {', '.join(deps)}" if deps else ""))
+        L.append("")
+
+    # ---- notes (session memory)
+    notes = sorted(by_kind("note"), key=lambda n: (n["props"].get("date") or "", n["id"]), reverse=True)
+    if notes:
+        L.append("## Session log (newest first)")
+        L.append("")
+        for n in notes[:25]:
+            about = [label(e["dst"]) for e in out_e[n["id"]] if e["rel"] == "ABOUT"]
+            body = (n.get("summary") or "").strip()
+            # an untitled note's label is just its first 80 chars — don't print the text twice
+            text = body if body.startswith(n["label"].rstrip("…")) else (n["label"] + (f" — {body}" if body else ""))
+            L.append(f"- **{n['props'].get('date', '')}** {text}" + (f" _(about: {', '.join(about)})_" if about else ""))
+        L.append("")
+
+    return "\n".join(L).rstrip() + "\n"
+
+
+def write() -> str:
+    text = render()
+    BRIEF_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BRIEF_PATH.write_text(text, encoding="utf-8")
+    return str(BRIEF_PATH)

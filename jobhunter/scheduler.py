@@ -50,7 +50,21 @@ def daily_cycle() -> dict:
         log.exception("daily cycle failed")
         _record("daily_cycle", summary, str(e)[:300])
         summary["error"] = str(e)[:300]
+    summary["kg"] = _sync_graph()
     return summary
+
+
+def _sync_graph() -> dict:
+    """Mirror the tables into the knowledge graph. Never fails a cycle — the graph is derived."""
+    from jobhunter.kg import brief, sync
+
+    try:
+        out = sync.sync_all()
+        brief.write()
+        return out
+    except Exception as e:  # noqa: BLE001
+        log.exception("knowledge graph sync failed")
+        return {"error": str(e)[:300]}
 
 
 def reply_cycle() -> dict:
@@ -68,6 +82,7 @@ def reply_cycle() -> dict:
         log.exception("reply cycle failed")
         _record("reply_cycle", summary, str(e)[:300])
         summary["error"] = str(e)[:300]
+    summary["kg"] = _sync_graph()
     return summary
 
 

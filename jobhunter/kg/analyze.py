@@ -1,0 +1,84 @@
+"""Graph analysis on top of the store, via NetworkX.
+
+SQLite persists the graph; NetworkX is what you reason over it with. Loading the whole
+thing into memory is a few thousand nodes — instant — so nothing here is cached.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import networkx as nx
+
+from jobhunter import ROOT
+from jobhunter.kg.store import Graph
+
+GRAPHML_PATH = ROOT / "knowledge" / "graph.graphml"
+
+
+def to_networkx(*, layer: str | None = None, include_all_jobs: bool = True) -> nx.MultiDiGraph:
+    """A directed multigraph with node kind/label/layer and edge rel as attributes."""
+    with Graph() as g:
+        sg = g.subgraph(layer=layer)
+    G = nx.MultiDiGraph()
+    for n in sg["nodes"]:
+        if not include_all_jobs and n["kind"] == "job" and n["props"].get("score") is None:
+            continue
+        G.add_node(n["id"], kind=n["kind"], label=n["label"], layer=n["layer"], summary=n.get("summary") or "")
+    for e in sg["edges"]:
+        if e["src"] in G and e["dst"] in G:
+            G.add_edge(e["src"], e["dst"], key=e["rel"], rel=e["rel"])
+    return G
+
+
+def hubs(*, layer: str | None = "context", kinds: list[str] | None = None, top: int = 15) -> list[dict]:
+    """Most load-bearing nodes — where the most decisions, features and guarantees meet.
+
+    Degree says how much connects to a node; betweenness says how often it sits on the
+    shortest path between two others (a constraint many features serve scores high on
+    both; a note scores low on both).
+    """
+    G = to_networkx(layer=layer)
+    U = nx.Graph(G)  # betweenness on the undirected simple graph
+    btw = nx.betweenness_centrality(U, normalized=True) if U.number_of_nodes() > 2 else {}
+    rows = []
+    for nid, data in G.nodes(data=True):
+        if kinds and data["kind"] not in kinds:
+            continue
+        rows.append(
+            {
+                "id": nid,
+                "kind": data["kind"],
+                "label": data["label"],
+                "in": G.in_degree(nid),
+                "out": G.out_degree(nid),
+                "degree": G.in_degree(nid) + G.out_degree(nid),
+                "betweenness": round(btw.get(nid, 0.0), 4),
+            }
+        )
+    rows.sort(key=lambda r: (-r["betweenness"], -r["degree"]))
+    return rows[:top]
+
+
+def orphans(*, layer: str | None = "context") -> list[dict]:
+    """Context nodes with no edges — usually a typo in a link key in context.yaml."""
+    G = to_networkx(layer=layer)
+    return [{"id": n, "kind": d["kind"], "label": d["label"]} for n, d in G.nodes(data=True) if G.degree(n) == 0]
+
+
+def communities(*, layer: str | None = "context") -> list[list[str]]:
+    """Greedy-modularity communities — which features, decisions and constraints cluster together."""
+    U = nx.Graph(to_networkx(layer=layer))
+    if U.number_of_edges() == 0:
+        return []
+    comms = nx.community.greedy_modularity_communities(U)
+    return [sorted(c) for c in comms]
+
+
+def write_graphml(path: Path | str = GRAPHML_PATH, *, layer: str | None = None, include_all_jobs: bool = False) -> str:
+    """GraphML for Gephi, yEd, Obsidian-Juggl and friends. Multigraph edges get their rel as the key."""
+    G = to_networkx(layer=layer, include_all_jobs=include_all_jobs)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    nx.write_graphml(G, str(path))
+    return str(path)

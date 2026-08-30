@@ -12,6 +12,13 @@
     python scripts/run.py poll           # check Gmail for replies
     python scripts/run.py daily          # the whole ingestion cycle
     python scripts/run.py serve          # FastAPI + scheduler on :8000
+
+    python scripts/run.py kg build       # (re)build the knowledge graph: context + data + brief + viewer
+    python scripts/run.py kg search "warmth"          # full-text search across data + context
+    python scripts/run.py kg show feature:warmth-tiers
+    python scripts/run.py kg path contact:3 constraint:send-cap-25
+    python scripts/run.py kg compose "..."            # best feature per stage for a problem statement
+    python scripts/run.py kg note "what changed" --about gap:1-send-ledger
 """
 
 from __future__ import annotations
@@ -267,6 +274,237 @@ def serve(
     typer.echo(f"API on http://{host or api.get('host', '127.0.0.1')}:{port or api.get('port', 8000)}")
     typer.echo("Docs at /docs   |   Dashboard: cd dashboard && npm run dev")
     _serve(host=host, port=port, reload=reload)
+
+
+# ---------------------------------------------------------------- knowledge graph
+
+kg_app = typer.Typer(add_completion=False, help="Knowledge graph — pipeline data + project context, one queryable store")
+app.add_typer(kg_app, name="kg")
+
+
+@kg_app.command("build")
+def kg_build(no_viewer: bool = typer.Option(False, help="Skip writing knowledge/graph.html")) -> None:
+    """Load knowledge/context.yaml, mirror every table, write BRIEF.md and the HTML viewer."""
+    _setup_logging()
+    from jobhunter.kg import analyze, brief, context, export, sync
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        ctx = context.load(g)
+    out = {"context": ctx, "data": sync.sync_all(), "brief": brief.write()}
+    if not no_viewer:
+        out["viewer"] = export.write_html()
+        out["graphml"] = analyze.write_graphml()
+    with Graph() as g:
+        out["stats"] = g.stats()
+    _echo(out)
+
+
+@kg_app.command("sync")
+def kg_sync() -> None:
+    """Mirror the pipeline tables into the data layer (runs automatically after each cycle)."""
+    _setup_logging()
+    from jobhunter.kg import sync
+
+    _echo(sync.sync_all())
+
+
+@kg_app.command("context")
+def kg_context() -> None:
+    """Reload only the context layer from knowledge/context.yaml (session notes are kept)."""
+    _setup_logging()
+    from jobhunter.kg import context
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        _echo(context.load(g))
+
+
+@kg_app.command("brief")
+def kg_brief(print_: bool = typer.Option(False, "--print", help="Print instead of writing the file")) -> None:
+    """Render knowledge/BRIEF.md — the context handoff a fresh session reads first."""
+    from jobhunter.kg import brief
+
+    typer.echo(brief.render() if print_ else brief.write())
+
+
+@kg_app.command("stats")
+def kg_stats() -> None:
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        _echo(g.stats())
+
+
+@kg_app.command("search")
+def kg_search(
+    query: str,
+    kind: str = typer.Option(None, help="Comma-separated kinds, e.g. feature,decision or job,contact"),
+    limit: int = 15,
+    any_: bool = typer.Option(False, "--any", help="Match any term instead of all"),
+) -> None:
+    """Full-text search across both layers."""
+    from jobhunter.kg.store import Graph
+
+    kinds = [k.strip() for k in kind.split(",")] if kind else None
+    with Graph() as g:
+        hits = g.search(query, kinds=kinds, limit=limit, mode="or" if any_ else "and")
+    for n in hits:
+        status = n["props"].get("status")
+        tag = f" [{status}]" if status else ""
+        typer.echo(f"{n['id']:<48}{tag} {n['label']}")
+        if n.get("summary"):
+            typer.echo(f"    {n['summary'][:160]}")
+    if not hits:
+        typer.echo("no matches")
+
+
+@kg_app.command("show")
+def kg_show(node_id: str, depth: int = 1, json_: bool = typer.Option(False, "--json")) -> None:
+    """A node, its properties and everything it links to."""
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        node = g.get(node_id)
+        if node is None:
+            hits = g.search(node_id, limit=5, mode="or")
+            typer.secho(f"no node '{node_id}'", fg=typer.colors.RED)
+            for h in hits:
+                typer.echo(f"  did you mean {h['id']}  {h['label']}")
+            raise typer.Exit(1)
+        hood = g.neighbors(node_id, depth=depth)
+    if json_:
+        _echo({"node": node, **hood})
+        return
+    typer.secho(f"{node['id']}  ({node['kind']}, {node['layer']})", bold=True)
+    typer.echo(node["label"])
+    if node.get("summary"):
+        typer.echo(f"\n{node['summary']}")
+    props = {k: v for k, v in node["props"].items() if v not in (None, "", [], {})}
+    if props:
+        typer.echo("")
+        for k, v in props.items():
+            typer.echo(f"  {k}: {json.dumps(v, ensure_ascii=False, default=str) if isinstance(v, (list, dict)) else v}")
+    labels = {n["id"]: n["label"] for n in hood["nodes"]}
+    outs = [e for e in hood["edges"] if e["src"] == node_id]
+    ins = [e for e in hood["edges"] if e["dst"] == node_id]
+    if outs:
+        typer.echo("\n→ outgoing")
+        for e in sorted(outs, key=lambda e: (e["rel"], e["dst"])):
+            typer.echo(f"  {e['rel']:<16} {e['dst']:<44} {labels.get(e['dst'], '')[:70]}")
+    if ins:
+        typer.echo("\n← incoming")
+        for e in sorted(ins, key=lambda e: (e["rel"], e["src"])):
+            typer.echo(f"  {e['rel']:<16} {e['src']:<44} {labels.get(e['src'], '')[:70]}")
+
+
+@kg_app.command("path")
+def kg_path(a: str, b: str, max_depth: int = 6) -> None:
+    """Shortest path between two nodes — e.g. how a contact connects to a constraint."""
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        steps = g.path(a, b, max_depth=max_depth)
+    if not steps:
+        typer.echo(f"no path within {max_depth} hops")
+        raise typer.Exit(1)
+    for step in steps:
+        if "edge" in step:
+            e = step["edge"]
+            typer.echo(f"    --{e['rel']}-->")
+        else:
+            typer.echo(f"{step['id']}  {step['label'][:80]}")
+
+
+@kg_app.command("note")
+def kg_note(
+    text: str,
+    about: list[str] = typer.Option(None, "--about", "-a", help="Node ids this note is about (repeatable)"),
+    tag: list[str] = typer.Option(None, "--tag", "-t"),
+    title: str = typer.Option(None, help="Short title; defaults to the first line of the text"),
+    brief: bool = typer.Option(True, help="Regenerate BRIEF.md afterwards"),
+) -> None:
+    """Remember something — a decision, a result, what changed. This is how context accumulates."""
+    from jobhunter.kg import brief as brief_mod
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        result = g.remember(text, about=about or [], tags=tag or [], title=title)
+    if result["missing_targets"]:
+        typer.secho(f"unknown --about ids (note saved without them): {result['missing_targets']}", fg=typer.colors.YELLOW)
+    if brief:
+        result["brief"] = brief_mod.write()
+    _echo(result)
+
+
+@kg_app.command("compose")
+def kg_compose(
+    statement: str = typer.Argument(None, help="Problem statement; defaults to the problem node"),
+    for_: list[str] = typer.Option(None, "--for", help="Constraint/guarantee ids that matter (repeatable)"),
+    top: int = typer.Option(2, help="Picks per stage"),
+    include_dropped: bool = False,
+    json_: bool = typer.Option(False, "--json"),
+) -> None:
+    """Pick the best feature per stage across every architecture draft for a problem statement."""
+    from jobhunter.kg import compose
+
+    result = compose.compose(statement, constraints=for_ or None, top=top, include_dropped=include_dropped)
+    if json_:
+        _echo(result)
+        return
+    typer.secho(f"statement: {result['statement'][:200].strip()}…", dim=True)
+    typer.secho(f"constraints: {result['constraints']}", dim=True)
+    typer.echo(f"weights: {result['weights']}   features considered: {result['features_considered']}\n")
+    for st in result["stages"]:
+        typer.secho(st["label"], bold=True)
+        for p in st["picks"]:
+            b = p["breakdown"]
+            typer.echo(
+                f"  {p['score']:.2f}  [{p['status']}] {p['label']}"
+                f"\n         rel {b['relevance']:.2f} · fit {b['fit']:.2f} · status {b['status']:.2f} · consensus {b['consensus']:.2f}"
+                f"   from: {', '.join(x.split(' — ')[0] for x in p['proposed_by']) or '(build)'}"
+            )
+            if p["serves"]:
+                typer.echo(f"         serves: {', '.join(p['serves'])}")
+        if st["also_considered"]:
+            typer.echo("  also: " + ", ".join(f"{a['id'].split(':',1)[1]} ({a['score']:.2f})" for a in st["also_considered"][:6]))
+        typer.echo("")
+
+
+@kg_app.command("hubs")
+def kg_hubs(
+    layer: str = typer.Option("context", help="context | data | all"),
+    kind: str = typer.Option(None, help="Comma-separated kinds to keep"),
+    top: int = 15,
+) -> None:
+    """Most load-bearing nodes by betweenness centrality (NetworkX)."""
+    from jobhunter.kg import analyze
+
+    kinds = [k.strip() for k in kind.split(",")] if kind else None
+    rows = analyze.hubs(layer=None if layer == "all" else layer, kinds=kinds, top=top)
+    typer.echo(f"{'betweenness':>11} {'deg':>4}  id")
+    for r in rows:
+        typer.echo(f"{r['betweenness']:>11.4f} {r['degree']:>4}  {r['id']:<44} {r['label'][:60]}")
+    orphans = analyze.orphans(layer=None if layer == "all" else layer)
+    if orphans:
+        typer.secho(f"\n{len(orphans)} unlinked node(s): " + ", ".join(o["id"] for o in orphans[:10]), fg=typer.colors.YELLOW)
+
+
+@kg_app.command("export")
+def kg_export(
+    all_jobs: bool = typer.Option(False, help="Include unscored jobs (default: scored only)"),
+    fmt: str = typer.Option("html", help="html | json | graphml"),
+    out: str = typer.Option(None, help="Output path"),
+) -> None:
+    """Write the graph as a standalone HTML viewer, JSON, or GraphML."""
+    from jobhunter.kg import analyze, export
+
+    if fmt == "json":
+        typer.echo(export.write_json(out or export.JSON_PATH, include_all_jobs=all_jobs))
+    elif fmt == "graphml":
+        typer.echo(analyze.write_graphml(out or analyze.GRAPHML_PATH, include_all_jobs=all_jobs))
+    else:
+        typer.echo(export.write_html(out or export.HTML_PATH, include_all_jobs=all_jobs))
 
 
 if __name__ == "__main__":

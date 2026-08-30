@@ -1,0 +1,22 @@
+"""Knowledge graph — the pipeline's data and the project's context in one queryable graph.
+
+Two layers share one node/edge store inside jobhunter.db:
+
+  data     mirrors of Company / Job / Contact / Email / Reply rows plus the resume
+           profile, linked the way the funnel links them (job -> company -> contact ->
+           email -> reply). Rebuilt by `sync.sync_all()`; never hand-edited.
+
+  context  what the code cannot tell you: the architecture drafts, every feature each
+           one proposed, which decision adopted or dropped it, the gaps still open,
+           the failure modes, the open questions, and dated session notes. Seeded from
+           knowledge/context.yaml; grown by `kg note`.
+
+`brief.write()` renders the graph into knowledge/BRIEF.md so a fresh session (human or
+model) starts with the context instead of rebuilding it. `compose.compose()` walks the
+context layer to pick, per pipeline stage, the best feature across all drafts for a
+given problem statement — the "ten architectures, take the best of each" operation.
+"""
+
+from jobhunter.kg.store import Graph
+
+__all__ = ["Graph"]

@@ -1,0 +1,139 @@
+"""Load the context layer from knowledge/context.yaml into the graph.
+
+The YAML is the human-editable source of truth for everything the code can't say
+about itself: which architecture draft proposed which feature, which decision
+adopted or dropped it, what is still a gap, what breaks first. Every top-level
+section is a node kind; a handful of link keys on each entry become edges.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import yaml
+
+from jobhunter import ROOT
+from jobhunter.kg.store import Graph
+
+log = logging.getLogger(__name__)
+
+CONTEXT_PATH = ROOT / "knowledge" / "context.yaml"
+
+# section name -> node kind
+SECTIONS = {
+    "architectures": "arch",
+    "constraints": "constraint",
+    "guarantees": "guarantee",
+    "stages": "stage",
+    "modules": "module",
+    "sources": "source",
+    "tools": "tool",
+    "features": "feature",
+    "decisions": "decision",
+    "gaps": "gap",
+    "failure_modes": "failure",
+    "open_questions": "question",
+    "notes": "note",
+}
+
+# link key on an entry -> (relation, direction). "out": entry -rel-> target; "in": target -rel-> entry
+LINKS: dict[str, tuple[str, str]] = {
+    "proposed_by": ("PROPOSES", "in"),
+    "serves": ("SERVES", "out"),
+    "implemented_in": ("IMPLEMENTED_IN", "out"),
+    "stage": ("AT_STAGE", "out"),
+    "adopts": ("ADOPTS", "out"),
+    "rejects": ("REJECTS", "out"),
+    "defers": ("DEFERS", "out"),
+    "recorded_in": ("RECORDED_IN", "out"),
+    "builds": ("WOULD_BUILD", "out"),
+    "protects": ("PROTECTS", "out"),
+    "mitigated_by": ("MITIGATED_BY", "out"),
+    "about": ("ABOUT", "out"),
+    "depends_on": ("DEPENDS_ON", "out"),
+    "supersedes": ("SUPERSEDES", "out"),
+    "enforced_by": ("ENFORCED_BY", "out"),
+    "runs": ("RUNS", "out"),
+    "then": ("THEN", "out"),
+    "replaces": ("REPLACES", "out"),
+    "part_of": ("PART_OF", "out"),
+    "related": ("RELATED_TO", "out"),
+    "used_by": ("USES", "in"),
+}
+
+
+def load_yaml() -> dict:
+    if not CONTEXT_PATH.exists():
+        raise FileNotFoundError(f"{CONTEXT_PATH} missing — the context layer has no seed")
+    return yaml.safe_load(CONTEXT_PATH.read_text(encoding="utf-8")) or {}
+
+
+def _as_list(v) -> list[str]:
+    if v is None:
+        return []
+    return [v] if isinstance(v, str) else list(v)
+
+
+def load(g: Graph, *, replace: bool = True) -> dict:
+    """(Re)build the context layer from the YAML. Session notes added via `kg note` survive."""
+    data = load_yaml()
+    stats = {"nodes": 0, "edges": 0, "dangling": []}
+
+    pending_edges: list[tuple[str, str, str, dict]] = []
+
+    if replace:
+        # notes are the one context kind written by the CLI, not the file — keep them, and keep
+        # their edges: deleting a target node drops the edge, so re-add it after the rebuild
+        for n in g.nodes(kind="note"):
+            for e in g.edges(n["id"], direction="out"):
+                pending_edges.append((e["src"], e["rel"], e["dst"], e["props"]))
+            for target in n["props"].get("about") or []:
+                pending_edges.append((n["id"], "ABOUT", target, {}))
+        for n in g.nodes(layer="context"):
+            if n["kind"] != "note":
+                g.delete_node(n["id"])
+
+    def add(kind: str, entry: dict) -> None:
+        nid = entry["id"]
+        if not nid.startswith(kind + ":"):
+            raise ValueError(f"{nid}: id must start with '{kind}:'")
+        links = {k: v for k, v in entry.items() if k in LINKS}
+        props = {k: v for k, v in entry.items() if k not in LINKS and k not in ("id", "label", "summary")}
+        g.upsert_node(nid, kind, entry.get("label") or nid, summary=entry.get("summary"), props=props, layer="context")
+        stats["nodes"] += 1
+        for key, targets in links.items():
+            rel, direction = LINKS[key]
+            for t in _as_list(targets):
+                if direction == "out":
+                    pending_edges.append((nid, rel, t, {}))
+                else:
+                    pending_edges.append((t, rel, nid, {}))
+
+    problem = data.get("problem")
+    if problem:
+        pid = problem["id"]
+        g.upsert_node(
+            pid, "problem", problem["label"], summary=problem.get("summary"),
+            props={k: v for k, v in problem.items() if k not in ("id", "label", "summary", "subproblems")},
+        )
+        stats["nodes"] += 1
+        for i, sub in enumerate(problem.get("subproblems") or [], start=1):
+            sid = f"problem:{sub.get('slug') or i}"
+            g.upsert_node(sid, "problem", sub["label"], summary=sub.get("summary"), props={"order": i})
+            pending_edges.append((sid, "PART_OF", pid, {}))
+            stats["nodes"] += 1
+
+    for section, kind in SECTIONS.items():
+        for entry in data.get(section) or []:
+            add(kind, entry)
+
+    for src, rel, dst, props in pending_edges:
+        if g.get(src) is None or g.get(dst) is None:
+            stats["dangling"].append(f"{src} -{rel}-> {dst}")
+            continue
+        g.upsert_edge(src, rel, dst, props=props, layer="context")
+        stats["edges"] += 1
+
+    if stats["dangling"]:
+        log.warning("context.yaml: %d edges point at unknown ids: %s", len(stats["dangling"]), stats["dangling"][:8])
+    return stats

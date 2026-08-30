@@ -21,6 +21,7 @@ dependencies = [
     "typer>=0.12",
     "playwright>=1.46",
     "numpy>=1.26",
+    "networkx>=3.6.1",
 ]
 
 [build-system]

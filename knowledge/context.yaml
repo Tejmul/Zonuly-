@@ -1,0 +1,1666 @@
+# ZoNuLy knowledge graph — context layer (human-editable source of truth)
+#
+# Everything the code cannot say about itself lives here: which architecture draft
+# proposed which feature, which decision adopted or dropped it, what is still a gap,
+# what breaks first, what is still undecided. `python scripts/run.py kg build` loads it.
+#
+# Conventions
+#   ids are kind:slug and must start with the section's kind (feature:, decision:, ...)
+#   link keys become edges (see jobhunter/kg/context.py LINKS):
+#     proposed_by  arch -PROPOSES-> this        serves        this -SERVES-> constraint|guarantee
+#     stage        this -AT_STAGE-> stage       implemented_in this -IMPLEMENTED_IN-> module
+#     adopts / rejects / defers                 decision -> feature
+#     builds / protects                         gap -> feature / guarantee
+#     mitigated_by                              failure -> feature
+#     about                                     question|note -> anything
+#   feature.status: built | partial | gap | open | dropped
+#   Session notes are added with `kg note`, not here — but dated milestones can live below.
+
+problem:
+  id: problem:zonuly
+  label: Get referred into ₹30 LPA+ roles at funded US/UK/DE (and Indian) startups, 25 honest emails a day each
+  summary: >
+    An engineer on site in the US/UK/Germany costs ₹1.5–2 crore a year; the same company can hire us
+    remotely from India, or on a visa, for ₹20–50 lakh and not notice. Recently funded startups exploit
+    that gap; the hyped names do not. We are two final-year students with real shipped AI/infra work
+    and normal (not Codeforces) DSA. ZoNuLy finds those companies and roles, grades each against our
+    resume, finds 10–30 real people per company and labels who can refer, writes one honest email each,
+    stops for our approval, sends 25 a day, tracks replies, follows up once, and puts every "yes" on our
+    calendar. Judgement only matters at "yes, send that to that person". Full statement: knowledge/MOTIV.md.
+  file: knowledge/MOTIV.md
+  subproblems:
+    - slug: hidden-jobs
+      label: You never see most of the good jobs
+      summary: Funded startups post to their own careers page (an ATS) and wait; aggregators see the role after hundreds have applied.
+    - slug: triage
+      label: You can't tell which ones are worth your time
+      summary: "\"AI Engineer\" spans eight-years-of-ML to founding-engineer-for-a-strong-student; only reading the JD against the resume tells you which. Grade decides order and effort, never whether we try."
+    - slug: cold-applications
+      label: Cold applications go nowhere
+      summary: A portal submission is one of 800; a weak referral from an engineer moves you to a stack of ten.
+    - slug: referrals-dont-scale
+      label: Referrals don't scale by hand
+      summary: Find a person, their role, their email, their work; write something non-templated; send; follow up; schedule — twenty minutes each, and we have coursework.
+    - slug: geography-pay
+      label: The pay gap is geographic and the target is funded startups abroad
+      summary: US/UK/DE remote-from-India or on-visa at any well-paid local rate; India on-site only at ₹30 LPA+. Not Google/Microsoft/Amazon. Visa feasibility (DE > UK > US) must be scored, not assumed.
+    - slug: people-and-roles
+      label: Who can actually refer
+      summary: 10–30 people per company, each classified SDE1/2/3, staff, EM, DevOps, founder/CTO, recruiter/HR. Engineers and EMs first, founders next, recruiters last.
+    - slug: scheduling
+      label: A "yes" must not get lost
+      summary: Replies that send a Meet link, an assessment or an interview slot go on our calendar with a notification; two companies on one slot get a reschedule draft for approval.
+    - slug: two-candidates
+      label: Two of us, one pipeline
+      summary: Per-candidate resumes, scores, drafts, Gmail accounts and send budgets; shared companies, jobs and contacts; never both of us to the same person in the same month.
+
+# ------------------------------------------------------------------ architectures
+architectures:
+  - id: arch:idea
+    label: IDEA.md — the problem, stated plainly
+    file: system docs/IDEA.md
+    date: "2026-08-01"
+    summary: The narrative brief. Defines the funnel shape, the honest-score rule, the confidence labels, the 25/day ceiling and the hard non-goals. Every later draft agrees with it.
+    stance: {role: problem statement}
+  - id: arch:plan
+    label: PLAN.md — the original build plan
+    file: system docs/PLAN.md
+    date: "2026-07-31"
+    summary: Python 3.12 + SQLModel + FastAPI pipeline, Next.js dashboard, Qwen3-4B via Ollama on 8 GB, seven free sources, five build phases. This is the draft the code was actually built from.
+    stance: {language: python, model: local qwen3:4b, orchestration: pipeline, budget: free}
+  - id: arch:architecture
+    label: JOBHUNTER-ARCHITECTURE.md — lessons from the MVRX portal
+    file: system docs/JOBHUNTER-ARCHITECTURE.md
+    date: "2026-08-01"
+    summary: Next.js + Drizzle + a Node worker; copies the portal's layering lint, HITL state machine and background-only long work; fixes its silent failures, missing tests and missing cost column. Hosted Claude for drafts, a (date, slot) send ledger, a proper-noun fabrication validator.
+    stance: {language: typescript, model: local + hosted claude for drafts, orchestration: queue table + worker, budget: small}
+  - id: arch:tools
+    label: JOBHUNTER-TOOLS.md — tools, services and relationship sourcing
+    file: system docs/JOBHUNTER-TOOLS.md
+    date: "2026-08-01"
+    summary: The what-do-I-sign-up-for doc. Free ATS APIs, GitHub as the relationship graph, an email-finding waterfall with paid tiers, and the warmth ladder (alumni > shared OSS > same city > stack > content > cold > recruiter) — its single best idea.
+    stance: {language: typescript, model: local + claude sonnet drafts, budget: "₹3–5k/mo", contacts: warmth-ranked}
+  - id: arch:orchestration
+    label: MULTI-AGENT-ORCHESTRATION.md — conductor, supervisors, workers
+    file: system docs/MULTI-AGENT-ORCHESTRATION.md
+    date: "2026-08-01"
+    summary: A deterministic conductor over 5 LLM supervisors over 18 narrow workers with typed envelopes, borrowed from gtm-os. Contributes the ideas that survived — send budget as a ledger, evidence-bound drafting, immutable artifacts, no auto-reject, guessed-send cap, draft expiry, outcomes for calibration — and the hierarchy that did not.
+    stance: {language: python, model: local three-tier, orchestration: conductor + supervisors + workers, budget: "₹0"}
+  - id: arch:gemini
+    label: GEMINI.md — sequential agents, guardrails, provenance
+    file: system docs/GEMINI.md
+    date: "2026-08-01"
+    summary: Four single-purpose agents passing typed handoffs, two runtime guardrails (tool-loop limit 5, Pydantic validation with 2 retries), and a clickable Provenance Panel showing exactly which HN comment or git commit produced each lead.
+    stance: {orchestration: sequential typed pipeline, ui: provenance panel}
+  - id: arch:final
+    label: FINAL-PLAN.md — the reconciliation
+    file: system docs/FINAL-PLAN.md
+    date: "2026-08-29"
+    summary: Supersedes the three competing drafts. States nine decisions against code that is actually running, measured on the live database, and lists seven gaps in build order. When in doubt, this document wins.
+    supersedes: [arch:architecture, arch:tools, arch:orchestration]
+    stance: {language: python, model: local qwen3:4b, orchestration: deterministic pipeline, budget: "₹0"}
+  - id: arch:chokepoints
+    label: CHOKEPOINTS.md — a keyless scraper run at the source's rate limit
+    file: system docs/CHOKEPOINTS.md
+    date: "2026-08-30"
+    summary: Rebuild manual for a PE deal-sourcing atlas. Transfers the scraping engine ideas — the rate budget as the governing constraint, hourly bounded ticks under launchd, staging + audit-gated promotion, freshness alarms, source-quality classification, cheap hosted models behind one CLI, and a table of bugs already paid for.
+    stance: {domain: other, scraping: keyless + rate-budgeted, scheduling: launchd, models: cheap hosted}
+  - id: arch:gtm
+    label: gtm-arch.md — gtm-os, budget-gated paid scraping and a HITL agent fleet
+    file: system docs/gtm-arch.md
+    date: "2026-08-30"
+    summary: Multi-tenant SaaS spec. Transfers the Apify no-cookies LinkedIn actors with pinned versions, per-call costs, a daily budget gate and a 24h cache; the untrusted-content wrapper; no-auto-reject; and the named-but-unheld send capability. Everything multi-tenant is not taken.
+    stance: {domain: other, scraping: apify no-cookies + budget gate, orchestration: temporal + agents, tenancy: multi}
+  - id: arch:zon
+    label: zon-arch.md — the MVRX portal
+    file: system docs/zon-arch.md
+    date: "2026-08-30"
+    summary: Agency portal rebuild spec. Transfers the calendar sync (syncToken, events table with attendees, meeting notifier), the Apify response cache keyed on actor + input hash with TTL, and the long-jobs-never-in-handlers rule. Slack-as-UI and the content tooling are not taken.
+    stance: {domain: other, calendar: google sync + notifier, scraping: apify cached, ui: slack}
+  - id: arch:plan-v2
+    label: FINAL-PLAN-V2.md — the plan against the restated problem
+    file: system docs/FINAL-PLAN-V2.md
+    date: "2026-08-30"
+    summary: Keeps D1–D10, adds D11–D15 — SQLite not CSV, LinkedIn only via no-cookies public channels, agents are workers not supervisors, regions/pay/visa feasibility in config and the rubric, two candidates with a cross-candidate cooldown. Five changes — targeting, people and roles, two candidates, replies → calendar, operations — with a twelve-step build order and a ≤ ₹1,400/month cost sheet.
+    supersedes: [arch:final]
+    stance: {language: python, model: local + optional cheap hosted, orchestration: deterministic conductor + narrow workers, budget: "₹0–1,400/mo"}
+  - id: arch:plan-v3
+    label: FINAL-PLAN-V3.md — built from gtm-arch, zon-arch and CHOKEPOINTS; no local model
+    file: system docs/FINAL-PLAN-V3.md
+    date: "2026-08-31"
+    summary: Ollama removed entirely. OpenRouter-only model layer with aliases, num_retries 0, cost rows and budget gates; pydantic-ai agents with capabilities and budget triples that can only propose; fact and draft proposals with thresholds and no auto-reject; faithfulness and publish gates; three scraping channels (keyless politeness core, Apify no-cookies, Brave research) behind staging → audit → promote; launchd ticks; Telegram review cards with atomic claims; calendar syncToken flow; permission tiers; 13 numbered build steps.
+    supersedes: [arch:plan-v2, arch:final]
+    stance: {language: python, model: openrouter aliases only, orchestration: launchd tick conductor + pydantic-ai workers, review: dashboard + telegram, budget: "₹1,400–4,000/mo, capped by permissions.yaml"}
+
+# ------------------------------------------------------------------ constraints (chosen, not derived)
+constraints:
+  - id: constraint:send-cap-25
+    label: 25 emails a day, each irreversible
+    order: 1
+    summary: The real ceiling. A personal Gmail sending 200 lookalike messages gets flagged, and the flagged account is the one interviews arrive at. Every upstream decision is about spending 25 well.
+  - id: constraint:human-review
+    label: Nothing sends without a human reading it
+    order: 2
+    summary: The review queue is the only path to send. Chosen mode, not a default.
+  - id: constraint:local-only
+    label: (retired) Model runs on the laptop; no LLM API key
+    order: 3
+    summary: Retired 2026-08-31 by D18. Replaced by — no secret leaves the laptop, every outbound model call is logged, priced and capped. The resume and drafts do go to OpenRouter.
+    retired: true
+  - id: constraint:8gb-ram
+    label: The machine has 8 GB of RAM and no model runtime
+    order: 4
+    summary: Ollama wrecked the machine every time. With no local model the pipeline is I/O-bound and 8 GB is plenty; the constraint now means no daemons and no local inference of any kind.
+  - id: constraint:no-local-model
+    label: No Ollama, no local model, ever
+    order: 3.5
+    summary: Every attempt to run Ollama locally broke the system. All model calls go through OpenRouter behind a ledger and caps; a CI grep fails on any ollama import.
+  - id: constraint:free-tier
+    label: Free tiers only for data APIs
+    order: 5
+    summary: No paid Apollo/SerpAPI/Findymail/MillionVerifier. Revisit only if verified-contact rate drops below ~20%.
+  - id: constraint:no-linkedin-automation
+    label: No logged-in LinkedIn automation, ever
+    order: 6
+    summary: A banned LinkedIn destroys the exact asset being built — the ability to be referred. LinkedIn is in no scraper module.
+  - id: constraint:single-user-laptop
+    label: One user, one machine, one SQLite file
+    order: 7
+    summary: No Postgres, no daemons, no cloud scheduler. Everything that exists because of multi-tenancy is out.
+  - id: constraint:ten-minute-review
+    label: Daily review must take ~10 minutes
+    order: 8
+    summary: If review takes forty minutes the system has failed at its only human step. Unmeasured so far.
+  - id: constraint:context-continuity
+    label: A new session must not start from scratch
+    order: 9
+    summary: Decisions, gaps and what-changed-when must be queryable, not re-derived from six documents every time. This is what the knowledge graph is for.
+  - id: constraint:student-budget
+    label: ₹0 recurring; at most ₹1,000–2,500/month if paid data raises who we reach
+    order: 10
+    summary: We are students. Every paid call sits behind a daily budget gate and a cache; the baseline must work at zero.
+  - id: constraint:visa-reality
+    label: Visa feasibility is scored, never assumed
+    order: 11
+    summary: US on-site for a new grad is an H-1B lottery; UK needs a sponsor licence; Germany's Blue Card is feasible with a degree and a €48k+ offer. Remote-from-India is the realistic first path abroad.
+  - id: constraint:one-of-us-per-contact
+    label: Never both of us to the same person in the same month
+    order: 12
+    summary: Two near-identical emails from two students at one college a week apart reads as spam and burns the company for both.
+  - id: constraint:approval-first
+    label: Nothing happens without permission — in the app and in building it
+    order: 13
+    summary: Every action has a tier (local read · free external read · spend · write to the world · forbidden). Spend and world-writes need a grant; anything without one creates a request and waits. Building follows the same rule — one proposed, approved step at a time (FINAL-PLAN-V2 §13–14).
+
+# ------------------------------------------------------------------ guarantees (the product)
+guarantees:
+  - id: guarantee:human-gate
+    label: Nothing sends without a human
+    order: 1
+    summary: sender.send_email() refuses any email whose status isn't approved; approval is only settable from the approve route; no scheduled job calls send.
+    enforced_by: [module:jobhunter.outreach, feature:review-queue-human-gate]
+  - id: guarantee:no-fabrication
+    label: Nothing is invented
+    order: 2
+    summary: Never a project, number or shared connection that isn't in the source material. Currently prompt-level only — the mechanical check is GAP-2.
+    enforced_by: [feature:person-research-honest-hook]
+  - id: guarantee:budget-spent-well
+    label: 25/day, irreversibly spent, visible everywhere
+    order: 3
+    summary: sent_today() counts sent rows since local midnight and gates every send. A count, not yet a ledger — GAP-1.
+    enforced_by: [feature:send-cap-count]
+  - id: guarantee:confidence-labels
+    label: Every contact carries a confidence tier, never collapsed
+    order: 4
+    summary: verified | pattern-guessed | scraped, stated on every insert, shown as a badge everywhere, used to order sends.
+    enforced_by: [feature:three-confidence-tiers, module:jobhunter.db]
+  - id: guarantee:one-followup
+    label: At most one follow-up per thread
+    order: 5
+    summary: Email.followup_sent is set when the follow-up is queued, not sent, so a second can't be created even if the first is never approved.
+    enforced_by: [feature:single-followup]
+  - id: guarantee:data-stays-local
+    label: No secret leaves the laptop; every outbound call is logged, priced and capped
+    order: 6
+    summary: Revised 2026-08-31 (D18). The resume and drafts do go to OpenRouter; keys stay in the environment; only the four network adapters may call out; every paid call is a ledger row under a cap you set.
+    enforced_by: [feature:openrouter-model-layer, feature:durable-run-ledger, feature:ci-guardrails]
+  - id: guarantee:no-auto-apply
+    label: No auto-apply, no contact-list building
+    order: 7
+    summary: There is no application-submission code path and no export path. One person, one role, one ask.
+    related: [constraint:no-linkedin-automation, guarantee:human-gate]
+
+# ------------------------------------------------------------------ pipeline stages
+stages:
+  - id: stage:platform
+    label: Platform (cross-cutting)
+    order: 0
+    summary: Storage, model client, orchestration, API, tests — what every stage stands on.
+    runs: [module:jobhunter.db, module:jobhunter.llm, module:jobhunter.scheduler, module:jobhunter.api, module:jobhunter.kg]
+  - id: stage:scrape
+    label: 1 · Scrape
+    order: 1
+    summary: 11,282 postings from 7 sources, free, parallel, each fault-isolated.
+    runs: [module:jobhunter.scrapers, module:jobhunter.pipeline]
+    then: stage:filter
+  - id: stage:filter
+    label: 2 · Filter + dedup
+    order: 2
+    summary: Title/location rules then company+title fingerprint across sources; 1,651 relevant → 1,100 stored.
+    runs: [module:jobhunter.normalize, module:jobhunter.pipeline]
+    then: stage:salary
+  - id: stage:salary
+    label: 3 · Salary
+    order: 3
+    summary: Regex first, LLM only on the residue; everything normalised to INR LPA.
+    runs: [module:jobhunter.normalize]
+    then: stage:embed
+  - id: stage:embed
+    label: 4 · Embed + prefilter
+    order: 4
+    summary: nomic-embed-text cosine vs the resume; keep the top 30% by percentile, ~330 survive.
+    runs: [module:jobhunter.matcher]
+    then: stage:score
+  - id: stage:score
+    label: 5 · Rubric score
+    order: 5
+    summary: qwen3:4b rubric, ~18 s each → screen odds 0–100 + reasons + gaps; hard rules cap the model; ≥65 is a high match.
+    runs: [module:jobhunter.matcher]
+    then: stage:contacts
+  - id: stage:contacts
+    label: 6 · Contacts
+    order: 6
+    summary: Per high-match company — GitHub commits → site scrape → learned pattern → Hunter (only if no pattern) → MX check.
+    runs: [module:jobhunter.contacts]
+    then: stage:research
+  - id: stage:research
+    label: 7 · Research
+    order: 7
+    summary: Their repos + bio → one honest hook, null if the material is thin.
+    runs: [module:jobhunter.outreach]
+    then: stage:draft
+  - id: stage:draft
+    label: 8 · Draft
+    order: 8
+    summary: 90–130 words, plain text, local model.
+    runs: [module:jobhunter.outreach]
+    then: stage:review
+  - id: stage:review
+    label: 9 · Review queue — the human gate
+    order: 9
+    summary: Edit · approve · reject. The only path to send; budget visible and depleting.
+    runs: [module:dashboard, module:jobhunter.api]
+    then: stage:send
+  - id: stage:send
+    label: 10 · Send
+    order: 10
+    summary: Gmail API, ≤25/day, 10:00–19:00, 45–210 s stagger, plain text.
+    runs: [module:jobhunter.outreach]
+    then: stage:track
+  - id: stage:track
+    label: 11 · Track replies
+    order: 11
+    summary: Poll threads → classify positive | negative | closed | neutral; ambiguous → neutral → human reads it.
+    runs: [module:jobhunter.outreach]
+    then: [stage:followup, stage:schedule]
+  - id: stage:followup
+    label: 12 · Follow up
+    order: 12
+    summary: Five days silent → exactly one follow-up → back to the review queue.
+    runs: [module:jobhunter.outreach]
+  - id: stage:schedule
+    label: 13 · Schedule
+    order: 13
+    summary: A positive reply with a link, a slot or a deadline becomes an event on our calendar with a notification; conflicts become a reschedule draft in the review queue.
+
+# ------------------------------------------------------------------ modules (layering: nothing imports upward)
+modules:
+  - id: module:jobhunter.db
+    label: db.py
+    path: jobhunter/db.py
+    layer_order: 0
+    summary: SQLModel models Company/Job/Contact/Email/Reply/Setting, engine, kv helpers.
+  - id: module:jobhunter.llm
+    label: llm.py
+    path: jobhunter/llm.py
+    layer_order: 0
+    summary: The only place a model is called — Ollama chat, JSON mode with retry, embeddings, think-stripping.
+  - id: module:jobhunter.normalize
+    label: normalize.py
+    path: jobhunter/normalize.py
+    layer_order: 0
+    summary: Relevance rules, dedup fingerprint, salary → INR LPA, mojibake repair.
+    depends_on: [module:jobhunter.llm]
+  - id: module:jobhunter.resume
+    label: resume.py
+    path: jobhunter/resume.py
+    layer_order: 0
+    summary: PDF/MD → profile.json via LLM, pulling hyperlinks from PDF annotations.
+    depends_on: [module:jobhunter.llm]
+  - id: module:jobhunter.notify
+    label: notify.py
+    path: jobhunter/notify.py
+    layer_order: 0
+    summary: macOS notifications for high matches and replies.
+    depends_on: [module:jobhunter.db]
+  - id: module:jobhunter.scrapers
+    label: scrapers/
+    path: jobhunter/scrapers/
+    layer_order: 1
+    summary: base.py (RawJob + async HTTP), discover.py (ATS probe), greenhouse · lever · ashby · hn_hiring · remoteok · wwr · yc.
+    depends_on: [module:jobhunter.normalize]
+  - id: module:jobhunter.contacts
+    label: contacts/
+    path: jobhunter/contacts/
+    layer_order: 1
+    summary: github_miner · site_scraper · patterns · hunter · verify; __init__ runs the waterfall.
+    depends_on: [module:jobhunter.db, module:jobhunter.scrapers]
+  - id: module:jobhunter.outreach
+    label: outreach/
+    path: jobhunter/outreach/
+    layer_order: 1
+    summary: researcher · drafter · gmail · sender · tracker.
+    depends_on: [module:jobhunter.db, module:jobhunter.llm]
+  - id: module:jobhunter.pipeline
+    label: pipeline.py
+    path: jobhunter/pipeline.py
+    layer_order: 2
+    summary: Scrape orchestration, company sync from companies.yaml, persist with dedup, LLM salary backfill.
+    depends_on: [module:jobhunter.scrapers, module:jobhunter.normalize, module:jobhunter.db]
+  - id: module:jobhunter.matcher
+    label: matcher.py
+    path: jobhunter/matcher.py
+    layer_order: 2
+    summary: Resume vector cache, percentile prefilter, rubric scoring with hard-rule caps, counts.
+    depends_on: [module:jobhunter.llm, module:jobhunter.db]
+  - id: module:jobhunter.scheduler
+    label: scheduler.py
+    path: jobhunter/scheduler.py
+    layer_order: 2
+    summary: APScheduler — daily scrape+score cycle, hourly reply poll; sequential on purpose (8 GB).
+    depends_on: [module:jobhunter.pipeline, module:jobhunter.matcher, module:jobhunter.outreach, module:jobhunter.kg]
+  - id: module:jobhunter.kg
+    label: kg/
+    path: jobhunter/kg/
+    layer_order: 2
+    summary: Knowledge graph — store (SQLite nodes/edges/FTS), context loader, data sync, compose, brief, export.
+    depends_on: [module:jobhunter.db]
+  - id: module:jobhunter.api
+    label: api.py
+    path: jobhunter/api.py
+    layer_order: 3
+    summary: FastAPI — reads, actions dispatched to background threads with task ids, config, kg routes.
+    depends_on: [module:jobhunter.pipeline, module:jobhunter.matcher, module:jobhunter.contacts, module:jobhunter.outreach, module:jobhunter.kg]
+  - id: module:scripts.run
+    label: scripts/run.py
+    path: scripts/run.py
+    layer_order: 3
+    summary: Typer CLI — doctor profile scrape score find-contacts draft gmail-auth send poll daily discover serve, plus the kg sub-commands.
+    depends_on: [module:jobhunter.api]
+  - id: module:dashboard
+    label: dashboard/
+    path: dashboard/
+    layer_order: 4
+    summary: Next.js 16 — Overview · Leads · Contacts · Queue · Tracker · Replies · Settings. Talks only to the REST API. Its own git repo.
+    depends_on: [module:jobhunter.api]
+
+# ------------------------------------------------------------------ job sources (ids match Job.source values)
+sources:
+  - {id: source:greenhouse, label: Greenhouse boards API, kind: ats, enabled: true, config_key: greenhouse, stage: stage:scrape, part_of: feature:ats-json-scrapers, endpoint: "boards-api.greenhouse.io/v1/boards/{slug}/jobs"}
+  - {id: source:lever, label: Lever postings API, kind: ats, enabled: true, config_key: lever, stage: stage:scrape, part_of: feature:ats-json-scrapers, endpoint: "api.lever.co/v0/postings/{slug}?mode=json"}
+  - {id: source:ashby, label: Ashby job-board API, kind: ats, enabled: true, config_key: ashby, stage: stage:scrape, part_of: feature:ats-json-scrapers, endpoint: "api.ashbyhq.com/posting-api/job-board/{slug}"}
+  - {id: source:hn, label: HN Who is Hiring (Algolia), kind: aggregator, enabled: true, config_key: hn_hiring, stage: stage:scrape, part_of: feature:aggregator-scrapers}
+  - {id: source:remoteok, label: RemoteOK API, kind: aggregator, enabled: true, config_key: remoteok, stage: stage:scrape, part_of: feature:aggregator-scrapers}
+  - {id: source:wwr, label: WeWorkRemotely RSS, kind: aggregator, enabled: true, config_key: wwr, stage: stage:scrape, part_of: feature:aggregator-scrapers}
+  - {id: source:yc, label: YC Work at a Startup, kind: aggregator, enabled: true, config_key: yc, stage: stage:scrape, part_of: feature:aggregator-scrapers}
+  - {id: source:wellfound, label: Wellfound (Playwright), kind: playwright, enabled: false, config_key: wellfound, stage: stage:scrape, part_of: feature:playwright-india-boards, note: "ToS may forbid automation; prefer the manual registry route"}
+  - {id: source:cutshort, label: Cutshort (Playwright), kind: playwright, enabled: false, config_key: cutshort, stage: stage:scrape, part_of: feature:playwright-india-boards}
+  - {id: source:instahyre, label: Instahyre (Playwright), kind: playwright, enabled: false, config_key: instahyre, stage: stage:scrape, part_of: feature:playwright-india-boards}
+
+# ------------------------------------------------------------------ tools and services (FINAL-PLAN-V2 §12)
+tools:
+  - {id: tool:ollama, label: Ollama — qwen3:4b + nomic-embed-text (REMOVED in v3 — wrecks the machine), tier: 4, cost: "the laptop", status: forbidden, used_by: [feature:local-model-qwen3-4b, feature:local-llm-drafting, feature:embedding-prefilter-percentile], related: [constraint:no-local-model]}
+  - {id: tool:sqlite, label: SQLite + FTS5 via SQLModel, tier: 0, cost: free, status: built, used_by: [feature:sqlite-single-file, feature:knowledge-graph-context]}
+  - {id: tool:networkx, label: NetworkX, tier: 0, cost: free, status: built, used_by: [feature:knowledge-graph-context]}
+  - {id: tool:fastapi, label: FastAPI + uvicorn + APScheduler, tier: 0, cost: free, status: built, used_by: [feature:background-task-registry, feature:deterministic-orchestrator]}
+  - {id: tool:nextjs, label: Next.js 16 dashboard, tier: 0, cost: free, status: built, used_by: [feature:nextjs-dashboard, feature:review-queue-human-gate]}
+  - {id: tool:launchd, label: launchd (macOS), tier: 0, cost: free, status: gap, used_by: [feature:launchd-tick]}
+  - {id: tool:osascript, label: macOS notifications, tier: 1, cost: free, status: built, used_by: [feature:macos-notifications, feature:calendar-events]}
+  - {id: tool:playwright, label: Playwright, tier: 1, cost: free, status: open, note: installed and off, used_by: [feature:playwright-india-boards]}
+  - {id: tool:ats-apis, label: Greenhouse / Lever / Ashby public board APIs, tier: 1, cost: free, keyless: true, status: built, used_by: [feature:ats-json-scrapers]}
+  - {id: tool:hn-algolia, label: HN Algolia API, tier: 1, cost: free, keyless: true, status: built, used_by: [feature:aggregator-scrapers]}
+  - {id: tool:remote-feeds, label: RemoteOK API + WeWorkRemotely RSS, tier: 1, cost: free, keyless: true, status: built, used_by: [feature:aggregator-scrapers]}
+  - {id: tool:yc-directory, label: YC Work at a Startup, tier: 1, cost: free, keyless: true, status: built, used_by: [feature:aggregator-scrapers, feature:company-registry-yaml]}
+  - {id: tool:funding-rss, label: "Funding RSS — TechCrunch, EU-Startups, Sifted, YourStory", tier: 1, cost: free, keyless: true, status: gap, used_by: [feature:funding-feed-registry]}
+  - {id: tool:github-api, label: GitHub REST API, tier: 1, cost: free, keyless: true, rate: "60/hr keyless, 5,000/hr with a free token", status: built, used_by: [feature:github-commit-mining, feature:person-research-honest-hook, feature:github-token-rate-limit]}
+  - {id: tool:company-sites, label: Company team / about / careers pages, tier: 1, cost: free, keyless: true, status: built, used_by: [feature:team-page-scrape]}
+  - {id: tool:dns-mx, label: DNS MX lookup (dnspython), tier: 1, cost: free, keyless: true, status: built, used_by: [feature:mx-check-only]}
+  - {id: tool:hunter, label: Hunter.io free tier, tier: 2, cost: "free, 25 lookups/month", status: built, used_by: [feature:hunter-free-tier-for-patterns]}
+  - {id: tool:gmail-api, label: Gmail API (own account, OAuth testing mode), tier: 3, cost: free, status: partial, note: no OAuth credentials yet, used_by: [feature:gmail-api-own-account, feature:reply-classification]}
+  - {id: tool:google-calendar, label: Google Calendar API (same OAuth), tier: 3, cost: free, status: gap, used_by: [feature:calendar-events, feature:conflict-reschedule-draft]}
+  - {id: tool:apify, label: "Apify — harvestapi no-cookies LinkedIn actors", tier: 2, cost: "$0.15 per 50 employees, $0.004 per profile; cap $0.50/day", status: gap, used_by: [feature:apify-employee-harvest, feature:apify-cache-ledger]}
+  - {id: tool:openrouter, label: "OpenRouter — the only model provider; aliases cheap / judge / writer", tier: 2, cost: "₹1,400–4,000/month at full volume, capped in permissions.yaml", status: gap, used_by: [feature:openrouter-model-layer, feature:openrouter-task-routing, feature:approval-assistant, feature:llm-rubric-scoring]}
+  - {id: tool:pydantic-ai, label: "pydantic-ai-slim[openai] — the agent loop (typed I/O, tools, validation retries)", tier: 0, cost: free, status: gap, used_by: [feature:agent-runtime-capabilities]}
+  - {id: tool:brave-search, label: "Brave Search API — free tier ~2,000 queries/month", tier: 1, cost: free tier, status: gap, used_by: [feature:research-rig-cited]}
+  - {id: tool:telegram-bot, label: Telegram Bot API — review cards and notifications, tier: 1, cost: free, status: gap, used_by: [feature:telegram-review-surface, feature:calendar-events]}
+  - {id: tool:wikimedia-dbpedia, label: "Wikimedia REST + DBpedia SPARQL — company facts (HQ, founded, headcount) in bulk", tier: 1, cost: free, keyless: true, rate: "Wikimedia 500/hr documented; DBpedia Crawl-delay 10", status: bench, note: "CHOKEPOINTS §4.2; add when company enrichment needs it"}
+  - {id: tool:companies-house, label: "UK Companies House API — company legitimacy, officers, filings", tier: 1, cost: free key, status: bench, note: "for UK targets; is this a real funded company"}
+  - {id: tool:opencorporates, label: "OpenCorporates — company registry lookups across jurisdictions", tier: 1, cost: free tier, status: bench, note: "DE/EU legitimacy checks"}
+  - {id: tool:product-hunt, label: "Product Hunt API — recently launched startups", tier: 1, cost: free key, status: bench, note: "another feed into the funding/launch → registry path"}
+  - {id: tool:linkedin-login-automation, label: "Logged-in LinkedIn automation (Phantombuster, Dripify, cookie actors)", tier: 4, cost: "your account", status: forbidden, related: [constraint:no-linkedin-automation]}
+  - {id: tool:paid-email-finders, label: "Findymail / Anymailfinder / MillionVerifier / Apollo / Clay", tier: 2, cost: "₹3–5k/month", status: dropped, used_by: [feature:paid-email-finders-verification]}
+  - {id: tool:saas-infra, label: "Neo4j / Kùzu / Postgres / Temporal / LiteLLM / Nango / Trigger.dev / Slack / Brave", tier: 0, cost: various, status: dropped, related: [decision:d4-deterministic-orchestrator, decision:d9-no-sqlite-vec, decision:d10-kg-in-sqlite]}
+
+# ------------------------------------------------------------------ features: every idea any draft proposed, and its fate
+features:
+  # ---- platform
+  - id: feature:python-pipeline-nextjs-ui
+    label: Python pipeline + Next.js UI over REST
+    summary: The scraping/PDF/email ecosystem is in Python; the dashboard stays Next.js but owns no data layer.
+    status: built
+    stage: stage:platform
+    proposed_by: [arch:plan, arch:orchestration]
+    serves: [constraint:single-user-laptop]
+    implemented_in: [module:jobhunter.api, module:dashboard]
+  - id: feature:typescript-drizzle-stack
+    label: Next.js + Drizzle + Node worker for everything
+    summary: One language, knowledge transfers from the MVRX portal. Lost to D1 — the value sits in Python's scraping and email libraries.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:architecture, arch:tools]
+  - id: feature:sqlite-single-file
+    label: SQLite, one file, no daemon
+    summary: Full relational DB for a single user; Postgres would eat RAM Ollama needs. SQLModel makes a later Postgres move a connection-string change.
+    status: built
+    stage: stage:platform
+    proposed_by: [arch:plan, arch:architecture, arch:tools, arch:orchestration, arch:final]
+    serves: [constraint:single-user-laptop, constraint:8gb-ram]
+    implemented_in: [module:jobhunter.db]
+  - id: feature:local-model-qwen3-4b
+    label: qwen3:4b + nomic-embed-text, resident together
+    summary: The best open-weight model that fits 8 GB; ~18 s per rubric score, both models at ~4.2 GB. Fixed num_ctx everywhere, keep_alive 30m, thinking off.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:plan, arch:final]
+    serves: [constraint:8gb-ram, constraint:local-only, guarantee:data-stays-local, constraint:free-tier]
+    implemented_in: [module:jobhunter.llm]
+  - id: feature:local-model-14b-tiered
+    label: qwen2.5:14b scoring + small model tiering
+    summary: Every early draft assumed 14B and ~16 GB. Does not fit this machine.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:tools, arch:orchestration]
+  - id: feature:single-llm-client-seam
+    label: One thin llm.py — the only place a model is called
+    summary: Chat, JSON mode with parse-retry, embeddings. Swapping to a bigger local model or a hosted one is a config line. Pull this seam first if reply rates are bad.
+    status: partial
+    stage: stage:platform
+    proposed_by: [arch:plan, arch:final]
+    serves: [guarantee:data-stays-local, constraint:local-only]
+    implemented_in: [module:jobhunter.llm]
+  - id: feature:deterministic-orchestrator
+    label: Deterministic orchestrator — APScheduler + per-item commits, no LLM supervisors
+    summary: Every "supervisor decision" is a ten-line policy with a config value. A crash loses one item, not the run. Daily 08:00 cycle, hourly reply poll, sequential on 8 GB.
+    status: partial
+    stage: stage:platform
+    proposed_by: [arch:orchestration, arch:plan, arch:architecture]
+    serves: [constraint:8gb-ram, constraint:single-user-laptop]
+    implemented_in: [module:jobhunter.scheduler]
+  - id: feature:llm-supervisor-hierarchy
+    label: 5 LLM supervisors over 18 workers with typed envelopes
+    summary: Capability narrowing, run tree, budget triples. Solves untrusted delegation, which a pipeline of plain function calls doesn't have. Dropped in D4; the narrow-worker and typed-contract ideas survived.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:orchestration]
+  - id: feature:sequential-typed-handoffs
+    label: Typed contracts between stages (RawJob, Salary, Score)
+    summary: Each stage hands the next a small typed payload; no stage sees the whole day.
+    status: built
+    stage: stage:platform
+    proposed_by: [arch:gemini, arch:orchestration]
+    implemented_in: [module:jobhunter.scrapers, module:jobhunter.normalize, module:jobhunter.matcher]
+  - id: feature:background-task-registry
+    label: API never runs long work inline — task_id + polling
+    summary: Scrape, score, discovery and send dispatch to a thread; the dashboard polls /api/tasks/{id}. Copied wholesale from the portal; why the UI never blocks on a 20-second model call.
+    status: built
+    stage: stage:platform
+    proposed_by: [arch:architecture, arch:final]
+    serves: [constraint:ten-minute-review]
+    implemented_in: [module:jobhunter.api]
+  - id: feature:json-retry-guardrail
+    label: Structured-output validation with bounded retries
+    summary: chat_json parses, nudges the model on failure, gives up after 2 retries with a default. GEMINI's tool-loop limit is moot — no agent here loops over tools.
+    status: built
+    stage: stage:platform
+    proposed_by: [arch:gemini, arch:orchestration, arch:architecture]
+    implemented_in: [module:jobhunter.llm]
+  - id: feature:layering-lint
+    label: Layering rule enforced by a lint script
+    summary: db/llm/normalize ← scrapers/contacts/outreach ← pipeline/matcher ← api ← dashboard. Holds by convention today; the portal's lint-architecture.sh doesn't port directly.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:architecture, arch:tools]
+  - id: feature:tests-fixtures
+    label: Fixture-driven tests — salary table, recorded scraper JSON, hand-labelled scores
+    summary: "\"Non-negotiable from commit one\" in the drafts; there are none. Salary parsing already caught two bugs by hand and is the cheapest insurance."
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:architecture, arch:tools]
+  - id: feature:api-cost-ledger
+    label: api_costs table — cost as a column, not a log line
+    summary: The portal's missing column. Dropped here because the local model costs ₹0; wall-clock is the real budget.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:architecture, arch:tools]
+  - id: feature:egress-allowlist-in-code
+    label: Hard-coded egress allowlist in the fetch wrapper
+    summary: "\"Your data doesn't leave the laptop\" as a code path. Today it holds by module convention — each scraper only knows its own host."
+    status: open
+    stage: stage:platform
+    proposed_by: [arch:orchestration]
+    serves: [guarantee:data-stays-local]
+  - id: feature:immutable-artifacts-content-hash
+    label: Append-only artifacts with content_hash; everything else re-derivable
+    summary: gtm-os's episode layer. Dropped — the job table refreshes volatile fields only and never clobbers scoring work, which covers the real need.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:orchestration]
+  - id: feature:rubric-version-on-scores
+    label: rubric_version / prompt_version on every score and draft
+    summary: Makes re-derivation well-defined when the rubric changes. Cheap column; not yet added.
+    status: open
+    stage: stage:score
+    proposed_by: [arch:architecture, arch:orchestration]
+  - id: feature:knowledge-graph-context
+    label: Knowledge graph — data + context in one queryable store
+    summary: SQLite nodes/edges/FTS in jobhunter.db, NetworkX for analysis; mirrors the tables, seeds the context from knowledge/context.yaml, renders knowledge/BRIEF.md, composes architectures per problem statement.
+    status: built
+    stage: stage:platform
+    serves: [constraint:context-continuity, constraint:single-user-laptop]
+    implemented_in: [module:jobhunter.kg]
+
+  # ---- scrape
+  - id: feature:ats-json-scrapers
+    label: ATS public JSON APIs — Greenhouse, Lever, Ashby
+    summary: Startups embed an ATS; its board endpoint is public JSON. The whole game. 94 boards live-verified in companies.yaml.
+    status: built
+    stage: stage:scrape
+    proposed_by: [arch:plan, arch:architecture, arch:tools, arch:orchestration, arch:gemini]
+    serves: [constraint:free-tier]
+    implemented_in: [module:jobhunter.scrapers]
+  - id: feature:aggregator-scrapers
+    label: HN Who-is-Hiring, RemoteOK, WeWorkRemotely, YC directory
+    summary: The places a funded 40-person company posts before anyone aggregates it. HN is freeform and needs the model; the rest are feeds.
+    status: built
+    stage: stage:scrape
+    proposed_by: [arch:plan, arch:tools, arch:orchestration]
+    serves: [constraint:free-tier]
+    implemented_in: [module:jobhunter.scrapers]
+  - id: feature:company-registry-yaml
+    label: companies.yaml — curated, live-probed ATS registry that compounds
+    summary: ATS APIs are keyed by slug so you need a company list first. `discover` probes YC companies and appends hits. The registry is the real asset.
+    status: built
+    stage: stage:scrape
+    proposed_by: [arch:architecture, arch:tools, arch:plan]
+    implemented_in: [module:jobhunter.pipeline, module:jobhunter.scrapers]
+  - id: feature:fault-isolated-sources
+    label: One dead source never kills a run
+    summary: Every scraper is individually try/except'd; ScrapeStats.errors records which failed and per_source counts are kept every run.
+    status: built
+    stage: stage:scrape
+    proposed_by: [arch:orchestration, arch:architecture]
+    implemented_in: [module:jobhunter.pipeline]
+  - id: feature:circuit-breaker-source-health
+    label: Per-source circuit breaker with a source_health table
+    summary: Three consecutive failures disable a source for the cycle. Replaced by simple fault isolation — a run is one shot, not a long workflow.
+    status: dropped
+    stage: stage:scrape
+    proposed_by: [arch:orchestration]
+    replaces: [feature:fault-isolated-sources]
+  - id: feature:source-freshness-alarm
+    label: A source returning 0 twice running is reported as a failure
+    summary: The most likely way the system dies without anyone noticing — a board changes shape, the scraper returns 0, nothing errors. per_source is recorded; the alarm isn't.
+    status: gap
+    stage: stage:scrape
+    proposed_by: [arch:orchestration, arch:final]
+  - id: feature:playwright-india-boards
+    label: Playwright scrapers for Wellfound, Cutshort, Instahyre
+    summary: They carry the Indian salary data the JSON boards don't. Registered and toggled off — slowest, most fragile, ToS exposure.
+    status: open
+    stage: stage:scrape
+    proposed_by: [arch:plan]
+    implemented_in: [module:jobhunter.scrapers]
+  - id: feature:manual-registry-route
+    label: Browse India boards by hand, paste company names into the registry
+    summary: Five minutes a week, no ToS exposure, and the ATS scrapers pick the companies up. Cheaper and safer than Playwright.
+    status: open
+    stage: stage:scrape
+    proposed_by: [arch:tools, arch:architecture, arch:final]
+    serves: [constraint:free-tier]
+    replaces: [feature:playwright-india-boards]
+
+  # ---- filter
+  - id: feature:rule-gate
+    label: Title + location relevance rules before the database
+    summary: Cheap rules throw out wrong discipline, seniority and continent before anything expensive touches them. Deliberately generous — a false negative is invisible forever.
+    status: built
+    stage: stage:filter
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration]
+    implemented_in: [module:jobhunter.normalize, module:jobhunter.pipeline]
+  - id: feature:cross-source-dedup-fingerprint
+    label: url unique + company+title fingerprint across sources, keep the richest record
+    summary: The same role on its ATS and an aggregator collapses to one row; 551 duplicates collapsed on the first full run.
+    status: built
+    stage: stage:filter
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration]
+    implemented_in: [module:jobhunter.normalize, module:jobhunter.pipeline]
+  - id: feature:mojibake-repair
+    label: Repair text encoding before anything reads it
+    summary: Discovered during the build — boards ship mis-decoded UTF-8 that breaks title matching.
+    status: built
+    stage: stage:filter
+    implemented_in: [module:jobhunter.normalize]
+  - id: feature:company-resolver
+    label: Canonical company resolution — domain match first, model for the residue
+    summary: "\"Acme\", \"Acme Inc.\", \"acme.com\" should be one company. Today it's name-keyed with a website upsert; never merge on name alone."
+    status: open
+    stage: stage:filter
+    proposed_by: [arch:orchestration]
+
+  # ---- salary
+  - id: feature:salary-regex-then-llm
+    label: Salary → INR LPA — regex first, LLM only on the residue
+    summary: "Handles $185,000-$260,000 · ₹25-40 LPA · 30,00,000 INR · £90k · 1.2 Cr · monthly stipends."
+    status: built
+    stage: stage:salary
+    proposed_by: [arch:plan]
+    implemented_in: [module:jobhunter.normalize, module:jobhunter.pipeline]
+
+  # ---- embed
+  - id: feature:embedding-prefilter-percentile
+    label: Embedding prefilter by percentile, not threshold
+    summary: nomic-embed-text puts every resume↔JD pair in a 0.55–0.84 band, so an absolute cutoff is meaningless; keep the top 30%. Thresholds drift, percentiles don't.
+    status: dropped
+    stage: stage:embed
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration]
+    serves: [constraint:8gb-ram]
+    implemented_in: [module:jobhunter.matcher]
+  - id: feature:resume-vector-cache
+    label: Resume vector cached in a Setting row, invalidated by content hash
+    summary: Plain-Python cosine over cached vectors is sub-second at 1,100 postings.
+    status: dropped
+    stage: stage:embed
+    proposed_by: [arch:final]
+    implemented_in: [module:jobhunter.matcher, module:jobhunter.db]
+  - id: feature:sqlite-vec
+    label: sqlite-vec extension for embeddings
+    summary: An extension to install, load and keep compatible for no measurable gain at this scale. Revisit past ~50k postings.
+    status: dropped
+    stage: stage:embed
+    proposed_by: [arch:tools, arch:orchestration]
+
+  # ---- score
+  - id: feature:llm-rubric-scoring
+    label: Rubric scoring — calibrated-pessimistic screen odds + reasons + gaps
+    summary: Stack overlap, YOE barrier, early-career signal, domain proximity, company stage. A Staff role scores low on perfect overlap; a Series-A founding role scores high on imperfect overlap. Hand-verified on Notion 75 / Deepgram 65 / Observe.AI 35 / Databricks 15.
+    status: built
+    stage: stage:score
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration, arch:gemini, arch:idea]
+    serves: [constraint:send-cap-25, guarantee:budget-spent-well]
+    implemented_in: [module:jobhunter.matcher]
+  - id: feature:hard-rule-caps
+    label: Deterministic caps override the model — senior title 35, below salary floor 40, thin description 60
+    summary: The model is trained toward encouragement; the caps aren't.
+    status: built
+    stage: stage:score
+    proposed_by: [arch:final]
+    serves: [guarantee:budget-spent-well]
+    implemented_in: [module:jobhunter.matcher]
+  - id: feature:no-auto-reject
+    label: A low score ranks a role last; it never deletes it
+    summary: gtm-os has a pytest gate against any auto-reject constant. The user may know something the rubric doesn't.
+    status: built
+    stage: stage:score
+    proposed_by: [arch:orchestration]
+    implemented_in: [module:jobhunter.matcher, module:jobhunter.api]
+  - id: feature:scoring-fixtures-calibration
+    label: ~20 hand-labelled postings re-scored on every prompt change
+    summary: The test suite for the part that has no obvious test. Guards calibration drift.
+    status: gap
+    stage: stage:score
+    proposed_by: [arch:architecture, arch:tools]
+  - id: feature:outcomes-table-calibration
+    label: outcomes table + calibration against real screens
+    summary: Whether "75" means 75% is unknown until real outcomes are recorded. Until then the UI should call the number a ranking, not a probability.
+    status: gap
+    stage: stage:score
+    proposed_by: [arch:orchestration, arch:final]
+
+  # ---- contacts
+  - id: feature:github-commit-mining
+    label: GitHub repo-commits endpoint → commit.author.email
+    summary: The repo commits endpoint still carries author emails; one call covers dozens of engineers, ~10–16 calls per company. Measured 100% for companies with public repos, 0% without — bimodal, not 20–40%.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:plan, arch:architecture, arch:tools, arch:orchestration, arch:gemini]
+    serves: [constraint:free-tier, guarantee:confidence-labels]
+    implemented_in: [module:jobhunter.contacts]
+  - id: feature:team-page-scrape
+    label: Company team/about/careers page scrape
+    summary: Names, roles and recruiter aliases from the company's own pages. The fallback for companies with no public code.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:plan, arch:tools, arch:orchestration]
+    serves: [constraint:free-tier]
+    implemented_in: [module:jobhunter.contacts]
+  - id: feature:email-pattern-inference
+    label: Learn the company's email pattern, apply it to every other name, MX-check
+    summary: first.last@ / flast@ / first@ learned from verified examples; results always labelled pattern-guessed.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:plan, arch:architecture, arch:tools, arch:orchestration]
+    serves: [constraint:free-tier]
+    implemented_in: [module:jobhunter.contacts]
+  - id: feature:hunter-free-tier-for-patterns
+    label: Hunter.io free tier (25/mo) spent on patterns, not people
+    summary: One domain-search call generalises to every name at that company. Only called when steps 1–3 left no pattern.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:plan, arch:tools]
+    serves: [constraint:free-tier]
+    implemented_in: [module:jobhunter.contacts]
+  - id: feature:mx-check-only
+    label: MX lookup always; SMTP RCPT probe off
+    summary: Residential ISPs block port 25, Google/Microsoft accept every recipient at the edge so a 250 proves nothing, and probing risks an IP listing. Built on by default — corrected in D7.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:tools, arch:final]
+    implemented_in: [module:jobhunter.contacts]
+  - id: feature:smtp-rcpt-probe
+    label: SMTP RCPT verification probe
+    summary: Unreliable and can get the IP blocked. TOOLS.md said don't; the build had it on; now off.
+    status: dropped
+    stage: stage:contacts
+    proposed_by: [arch:plan]
+  - id: feature:paid-email-finders-verification
+    label: Findymail / Anymailfinder + MillionVerifier credits
+    summary: ₹3–5k/mo for the remainder after free sources. Not spent — free tiers are far above the 20% revisit threshold for companies worth contacting.
+    status: dropped
+    stage: stage:contacts
+    proposed_by: [arch:tools, arch:architecture]
+  - id: feature:three-confidence-tiers
+    label: verified | pattern-guessed | scraped — never defaulted, never collapsed
+    summary: Named for what the user must distinguish when spending 25 sends. Badge everywhere a contact appears; sorts the queue.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration, arch:idea, arch:final]
+    serves: [guarantee:confidence-labels, constraint:send-cap-25]
+    implemented_in: [module:jobhunter.db, module:jobhunter.contacts]
+  - id: feature:contact-ranker
+    label: Verified-first ordering, then role relevance
+    summary: Confidence tier first; engineers on the team you'd join beat recruiters. Seniority ordering (mid-level replies more than VPs) not built.
+    status: partial
+    stage: stage:contacts
+    proposed_by: [arch:orchestration]
+    serves: [constraint:send-cap-25]
+    implemented_in: [module:jobhunter.api, module:jobhunter.outreach]
+  - id: feature:skip-company-not-guess
+    label: No public code and no team page → skip the company, don't guess
+    summary: Better to skip a company than burn a send on a fabricated address.
+    status: built
+    stage: stage:contacts
+    proposed_by: [arch:orchestration, arch:final]
+    serves: [constraint:send-cap-25]
+    implemented_in: [module:jobhunter.contacts]
+  - id: feature:github-token-rate-limit
+    label: GitHub personal access token — 60/hr → 5,000/hr
+    summary: Single highest-leverage config change available; contacts.github_token is unset.
+    status: open
+    stage: stage:contacts
+    proposed_by: [arch:tools, arch:orchestration, arch:final]
+  - id: feature:warmth-tiers
+    label: Warmth ladder — alumni > shared OSS > same city > same stack > content > cold > recruiter
+    summary: Rank contacts by relationship strength and sort the review queue by warmth, not job score. Probably worth more than any other single feature; costs warmth_tier + warmth_evidence columns and a ranking function.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:tools]
+    serves: [constraint:send-cap-25, guarantee:budget-spent-well]
+  - id: feature:manual-linkedin-alumni-csv
+    label: Manual LinkedIn alumni sourcing → CSV → pipeline resolves emails and drafts
+    summary: The alumni filter is the tier-1 goldmine and the only safe way to use LinkedIn. Ten minutes a week, by hand, feeds the automated pipeline.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:tools]
+    serves: [constraint:no-linkedin-automation, constraint:send-cap-25]
+  - id: feature:provenance-panel
+    label: Clickable provenance — the HN comment, the board endpoint, the commit SHA behind every lead
+    summary: A verification trail on the job detail page showing exactly why a company was scraped and how a contact's email was found. Contact.source and github are stored; the SHA and the UI are not.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:gemini]
+    serves: [guarantee:confidence-labels]
+
+  # ---- research + draft
+  - id: feature:person-research-honest-hook
+    label: Researcher reads their repos + bio → one honest hook, or null
+    summary: The hook is null if the material is too thin. Never invented. GitLab contact came back with hook=null and a company-level note — that's the design working.
+    status: built
+    stage: stage:research
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration]
+    serves: [guarantee:no-fabrication]
+    implemented_in: [module:jobhunter.outreach]
+  - id: feature:local-llm-drafting
+    label: Drafts written by the local model — 90–130 words, plain text
+    summary: The review queue catches stiff prose; a stiff draft you edit is not a failure mode, an unreviewed one would be.
+    status: dropped
+    stage: stage:draft
+    proposed_by: [arch:plan, arch:orchestration]
+    serves: [constraint:local-only, guarantee:data-stays-local, constraint:free-tier]
+    implemented_in: [module:jobhunter.outreach]
+  - id: feature:hosted-claude-drafting
+    label: Claude Sonnet for drafts (local for everything else)
+    summary: "\"Local 8B prose is noticeably stiffer.\" Dropped in D3; the seam in llm.py is kept. Pull it first if reply rates are bad — not before."
+    status: dropped
+    stage: stage:draft
+    proposed_by: [arch:architecture, arch:tools]
+  - id: feature:fabrication-validator-cheap
+    label: Proper nouns + numbers in the draft must appear in the researcher's input; mismatches flagged in the review UI
+    summary: The cheap 80% of evidence spans. A 4B model will eventually invent a repo name; prompts drift, validators don't.
+    status: gap
+    stage: stage:draft
+    proposed_by: [arch:architecture, arch:final]
+    serves: [guarantee:no-fabrication]
+  - id: feature:evidence-spans-faithfulness-auditor
+    label: Evidence spans on every claim + a deterministic auditor that strips, never rewrites
+    summary: Persona Reader emits only cited observations; Drafter maps sentences to spans; auditor checks existence then support. Heavy — the cheap validator is preferred first.
+    status: open
+    stage: stage:draft
+    proposed_by: [arch:orchestration, arch:gemini]
+    serves: [guarantee:no-fabrication]
+  - id: feature:voice-checker
+    label: Voice check against the corpus of previously approved drafts
+    summary: If you find yourself approving without editing, drafts have become templates. No corpus yet.
+    status: open
+    stage: stage:draft
+    proposed_by: [arch:orchestration]
+
+  # ---- review
+  - id: feature:review-queue-human-gate
+    label: Review queue — edit · approve · reject; the only path to send
+    summary: The one place a human is required and the only place a human adds anything. send_email refuses anything not approved.
+    status: built
+    stage: stage:review
+    proposed_by: [arch:idea, arch:plan, arch:architecture, arch:tools, arch:orchestration, arch:gemini, arch:final]
+    serves: [constraint:human-review, guarantee:human-gate]
+    implemented_in: [module:jobhunter.outreach, module:jobhunter.api, module:dashboard]
+  - id: feature:budget-visible-every-screen
+    label: Remaining daily budget visible and depleting on every screen
+    summary: Scarcity has to be felt at review time, not discovered at send time.
+    status: built
+    stage: stage:review
+    proposed_by: [arch:idea, arch:architecture, arch:orchestration]
+    serves: [constraint:send-cap-25]
+    implemented_in: [module:dashboard]
+  - id: feature:keyboard-driven-review
+    label: Keyboard-driven review (j k a r), inline edit
+    summary: Most drafts need one line changed, not a rewrite. Ten minutes a day or the tool has failed.
+    status: open
+    stage: stage:review
+    proposed_by: [arch:architecture]
+    serves: [constraint:ten-minute-review]
+  - id: feature:draft-expiry-7d
+    label: Drafts expire after 7 days
+    summary: A stale draft about a filled role makes the sender look inattentive — worse than not sending. One column, one check.
+    status: gap
+    stage: stage:review
+    proposed_by: [arch:orchestration]
+    serves: [constraint:send-cap-25]
+  - id: feature:macos-notifications
+    label: macOS notifications for new high matches and replies
+    summary: osascript; plus a "New" section in the dashboard.
+    status: built
+    stage: stage:review
+    proposed_by: [arch:plan]
+    implemented_in: [module:jobhunter.notify]
+  - id: feature:nextjs-dashboard
+    label: Next.js dashboard — Overview · Leads · Contacts · Queue · Tracker · Replies · Settings
+    summary: Reads and writes only through the REST API.
+    status: built
+    stage: stage:review
+    proposed_by: [arch:plan, arch:architecture, arch:final]
+    implemented_in: [module:dashboard]
+
+  # ---- send
+  - id: feature:send-cap-count
+    label: Daily cap as a count — sent rows since local midnight
+    summary: Nearly right. The decrement isn't in the same transaction as the Gmail call, so a crash between send and DB write loses a send from the count.
+    status: built
+    stage: stage:send
+    proposed_by: [arch:plan]
+    serves: [constraint:send-cap-25, guarantee:budget-spent-well]
+    implemented_in: [module:jobhunter.outreach]
+  - id: feature:send-budget-ledger
+    label: send_budget(date, cap, used) row, locked and decremented inside the send transaction
+    summary: Both ARCHITECTURE (unique (date, slot)) and ORCHESTRATION specify it. Do this before the first real send — the failure it prevents damages the Gmail account.
+    status: gap
+    stage: stage:send
+    proposed_by: [arch:architecture, arch:orchestration]
+    serves: [constraint:send-cap-25, guarantee:budget-spent-well]
+    replaces: [feature:send-cap-count]
+  - id: feature:guessed-send-cap-5
+    label: At most 5 of the 25 daily sends to pattern-guessed addresses
+    summary: Bounces are the main way this system damages the account it depends on.
+    status: gap
+    stage: stage:send
+    proposed_by: [arch:orchestration]
+    serves: [constraint:send-cap-25, guarantee:confidence-labels]
+  - id: feature:send-window-stagger-plaintext
+    label: Send 10:00–19:00 local, 45–210 s stagger, plain text, no pixels
+    summary: A personal Gmail must look like a person. No HTML, no tracking, no link shortener.
+    status: built
+    stage: stage:send
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration]
+    serves: [constraint:send-cap-25]
+    implemented_in: [module:jobhunter.outreach]
+  - id: feature:gmail-api-own-account
+    label: Gmail API (OAuth) from the user's own account — needed for threading and reply reads
+    summary: Not SMTP, not Resend/SendGrid. Built; untested end to end because OAuth credentials don't exist yet.
+    status: partial
+    stage: stage:send
+    proposed_by: [arch:plan, arch:architecture, arch:tools, arch:orchestration]
+    implemented_in: [module:jobhunter.outreach]
+
+  # ---- track + follow up
+  - id: feature:reply-classification
+    label: Replies classified positive | negative | closed | neutral; unclear goes to the human
+    summary: A forced guess on a hedged reply is worse than an admission. Built, untested against real mail.
+    status: partial
+    stage: stage:track
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration, arch:idea]
+    implemented_in: [module:jobhunter.outreach]
+  - id: feature:single-followup
+    label: Exactly one follow-up after 5 silent days, back through the review queue
+    summary: A second follow-up converts almost nothing and costs the relationship. followup_sent is set at queue time.
+    status: partial
+    stage: stage:followup
+    proposed_by: [arch:plan, arch:architecture, arch:orchestration, arch:idea]
+    serves: [guarantee:one-followup]
+    implemented_in: [module:jobhunter.outreach]
+  - id: feature:funnel-analytics
+    label: Funnel with numbers — reply rate by role type, framing, confidence tier
+    summary: What turns job hunting from hopeful gestures into something adjustable. tracker.funnel() gives the counts; the breakdowns aren't built.
+    status: partial
+    stage: stage:track
+    proposed_by: [arch:idea, arch:orchestration]
+    implemented_in: [module:jobhunter.outreach, module:dashboard]
+
+  # ---- v2: targeting, people and roles, two candidates, calendar, operations
+  - id: feature:region-currency-targeting
+    label: Target regions with per-region pay floors — US/UK/DE any well-paid, India ≥ ₹30 LPA on-site
+    summary: search.regions replaces the flat location allowlist; gbp_to_inr joins usd/eur; location_ok() classifies country and remote-eligibility instead of matching strings.
+    status: gap
+    stage: stage:filter
+    proposed_by: [arch:plan-v2]
+    serves: [guarantee:budget-spent-well]
+  - id: feature:location-feasibility-score
+    label: Fifth rubric dimension — does this posting allow remote-from-India, sponsor, or sit where a new-grad visa is realistic
+    summary: DE > UK > US for on-site; remote contractor is the realistic path for US/UK startups. Hard rule — US on-site with no sponsorship statement caps at 45. Must cite the JD sentence it relied on.
+    status: gap
+    stage: stage:score
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:visa-reality, constraint:send-cap-25]
+  - id: feature:funding-feed-registry
+    label: Funding-round RSS → company names → ATS probe → staged registry entries
+    summary: TechCrunch funding, EU-Startups, Sifted, YourStory are free. A cheap extractor pulls names; discover probes Greenhouse/Lever/Ashby; hits are staged and promoted through an audit. Grows the registry toward recently funded companies, which is the thesis.
+    status: gap
+    stage: stage:scrape
+    proposed_by: [arch:plan-v2, arch:chokepoints]
+    serves: [constraint:free-tier]
+  - id: feature:staging-promote-gate
+    label: No scraper writes companies.yaml — discovery stages, promote audits and merges
+    summary: Dead website, duplicate domain, missing ATS are caught before the registry that compounds is touched. Default is a preview; --apply refuses on a failing audit.
+    status: gap
+    stage: stage:scrape
+    proposed_by: [arch:chokepoints]
+  - id: feature:role-classifier
+    label: Role classifier — engineer | senior_engineer | manager | founder | recruiter | other, plus seniority
+    summary: Deterministic keyword table on headline/bio first (SDE II, Staff, Founder, Talent, People), LLM only for the residue, unknown is kept as other and never dropped.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:send-cap-25, guarantee:budget-spent-well]
+  - id: feature:referral-ability-ranking
+    label: Rank contacts by who can refer — engineers with verified email, then EMs, founders, recruiters last
+    summary: Replaces plain confidence ordering in the drafter and the contacts view. Warmth tiers sit on top when built.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:send-cap-25]
+    replaces: [feature:contact-ranker]
+  - id: feature:apify-employee-harvest
+    label: Apify no-cookies LinkedIn employee harvest, budget-gated at $0.50/day, cached 24h
+    summary: harvestapi~linkedin-company-employees ≈ $0.15 per 50 people; only for graded companies with no GitHub org. Pinned actor version in the cache key; rows enter as scraped until pattern inference resolves an email. Never touches our own LinkedIn session.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:gtm, arch:plan-v2]
+    serves: [constraint:no-linkedin-automation, constraint:student-budget]
+  - id: feature:untrusted-content-wrapper
+    label: Scraped bios and pages enter prompts wrapped as untrusted data, never instructions
+    summary: A bio that says "ignore previous instructions" must not work on the researcher or the drafter.
+    status: gap
+    stage: stage:research
+    proposed_by: [arch:gtm]
+    serves: [guarantee:no-fabrication]
+  - id: feature:multi-candidate
+    label: Two candidates, one pipeline — candidate table, per-candidate scores, drafts, Gmail and budgets
+    summary: job_score(candidate_id, job_id) replaces the score columns on job; email.candidate_id; sent_today() per candidate; companies, jobs and contacts stay shared; a candidate switcher in the dashboard.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:one-of-us-per-contact]
+  - id: feature:cross-candidate-cooldown
+    label: A contact is written to by at most one of us per 30 days; one of us per company per role
+    summary: Enforced in drafter.draft_for, not in a prompt.
+    status: gap
+    stage: stage:draft
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:one-of-us-per-contact, constraint:send-cap-25]
+  - id: feature:reply-intent-extraction
+    label: Schedule extractor — a positive reply becomes {intent, proposed_times, link, deadline, needs_action}
+    summary: Times parsed with both timezones (the classic failure is a "4pm" that was theirs). Nothing is confirmed to the other party by the machine.
+    status: gap
+    stage: stage:schedule
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:human-review]
+  - id: feature:calendar-events
+    label: event table + Google Calendar (same OAuth, calendar scope) + macOS/Telegram notification
+    summary: Confirmed slots become calendar events; assessments get a block two days before the deadline; "send your resume" becomes needs_action. Design lifted from zon-arch's calendar sync and meeting notifier.
+    status: gap
+    stage: stage:schedule
+    proposed_by: [arch:zon, arch:plan-v2]
+  - id: feature:conflict-reschedule-draft
+    label: Two companies on one slot → a reschedule reply drafted into the review queue
+    summary: Conflict detection against the live calendar; the draft is approved by us like any other email.
+    status: gap
+    stage: stage:schedule
+    proposed_by: [arch:plan-v2]
+    serves: [guarantee:human-gate]
+  - id: feature:interview-prep-brief
+    label: One-page prep checklist per confirmed interview from the job's gaps and the company's product
+    summary: Small on purpose. The pipeline gets the screen; it does not pass it.
+    status: open
+    stage: stage:schedule
+    proposed_by: [arch:plan-v2]
+  - id: feature:launchd-tick
+    label: Hourly bounded tick under launchd, fcntl-locked — the pipeline runs while the API is down and fires on wake
+    summary: APScheduler inside the API misses 08:00 whenever the laptop is asleep at 08:00. One slice per hour — scrape one source, or score N, or find contacts for one company, whichever is most stale.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:chokepoints]
+    serves: [constraint:single-user-laptop]
+    replaces: [feature:deterministic-orchestrator]
+  - id: feature:apify-cache-ledger
+    label: Apify response cache keyed on (actor, version, input hash) with TTL, plus a daily cost ledger
+    summary: Re-running a night never re-spends; the $0.50/day gate reads the ledger before every call.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm, arch:zon]
+    serves: [constraint:student-budget]
+  - id: feature:csv-import-export
+    label: CSV export of companies / contacts / sends / events, CSV import of companies through the audit gate
+    summary: The CSV the problem statement asked for, as an interface for the two of us and for spreadsheets — not as the store (D11).
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:context-continuity]
+  - id: feature:csv-as-the-store
+    label: Store companies in a CSV instead of a database
+    summary: Cannot hold dedup keys, scores, who-was-contacted-when, budgets or reply state. CHOKEPOINTS moved its harvest state to SQLite for exactly this reason.
+    status: dropped
+    stage: stage:platform
+    proposed_by: [arch:plan-v2]
+  - id: feature:cheap-hosted-model-seam
+    label: OpenAI-compatible cheap hosted model (Kimi / DeepSeek via OpenRouter) behind llm.py, drafts only
+    summary: ₹100–400/month at our volume. Pull only if local drafts are the bottleneck (D3). CHOKEPOINTS' ask_llm pattern — one client fronting many cheap providers, think-stripping, max_tokens budgeted for reasoning.
+    status: dropped
+    stage: stage:draft
+    proposed_by: [arch:chokepoints, arch:plan-v2]
+    serves: [constraint:student-budget]
+
+  - id: feature:permission-gate
+    label: Permission gate — tiers 0–4, permissions.yaml grants, approval_request + action_log, pending/grant/deny CLI and dashboard tab
+    summary: Every action is checked; spend needs an enabled provider under cap; world-writes are per-item; forbidden has no code path. Anything without a grant creates a request, notifies, and waits. The scheduler never blocks on a request. Build step 0.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:plan-v2, arch:gtm]
+    serves: [constraint:approval-first, guarantee:human-gate, constraint:student-budget]
+  - id: feature:action-log
+    label: action_log — every tier 1–3 call with cost, candidate and outcome
+    summary: "\"What did the system do last night and what did it cost\" is one query."
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:plan-v2, arch:chokepoints]
+    serves: [constraint:approval-first]
+  - id: feature:openrouter-task-routing
+    label: Per-task routing in llm.py — draft / followup / review to OpenRouter, score / reply / research local, local fallback always
+    summary: One OpenAI-compatible key; daily call cap and token ledger in Setting; no key or any error falls back to qwen3:4b. A prototype was wired and reverted on 2026-08-30 pending approval (build step 8).
+    status: gap
+    stage: stage:draft
+    proposed_by: [arch:plan-v2, arch:chokepoints]
+    serves: [constraint:student-budget, constraint:local-only]
+    replaces: [feature:cheap-hosted-model-seam]
+  - id: feature:approval-assistant
+    label: Approval assistant — a review worker that flags each draft for fabrication, tone, length and the one-ask rule; never approves
+    summary: Writes email.review_flags; the queue shows them beside the draft. The human still presses approve. Runs on the hosted tier when enabled, locally otherwise.
+    status: gap
+    stage: stage:review
+    proposed_by: [arch:plan-v2]
+    serves: [guarantee:no-fabrication, guarantee:human-gate, constraint:ten-minute-review]
+  - id: feature:build-approval-protocol
+    label: Build protocol — every step proposed with scope, files, tools, cost, verification and rollback; approved by number; one at a time; kg note after each
+    summary: No new tool, key, dependency or spend without a line in the inventory and a yes. Anything touching sending, budgets or the permission file is shown as a diff before it runs.
+    status: built
+    stage: stage:platform
+    proposed_by: [arch:plan-v2]
+    serves: [constraint:approval-first, constraint:context-continuity]
+
+  - id: feature:date-in-prompts
+    label: Today's date injected into every prompt
+    summary: Models otherwise reason from their training cutoff. Load-bearing for the schedule extractor — "Thursday 4pm" needs a reference date.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm]
+    serves: [guarantee:no-fabrication]
+  - id: feature:humanisation-lint
+    label: AI-tell vocabulary and phrase lint on drafts — no em dashes, no "delve / leverage / robust", contractions, grade 6–8
+    summary: zon-arch's ~70-word list plus banned corporate phrases, applied by the approval assistant and _clean_body. The drafter already strips em dashes.
+    status: gap
+    stage: stage:review
+    proposed_by: [arch:zon]
+    serves: [constraint:ten-minute-review]
+  - id: feature:calendar-sync-token-resync
+    label: Calendar sync with syncToken; 410 → full resync ±7 days; notify at ≤30 min once via notified_at
+    summary: The two failure modes — expired token and double notification — solved verbatim from zon-arch §16.8.
+    status: gap
+    stage: stage:schedule
+    proposed_by: [arch:zon]
+
+  # ---- v3: built from gtm-arch, zon-arch, CHOKEPOINTS
+  - id: feature:openrouter-model-layer
+    label: OpenRouter-only model layer — aliases cheap / judge / writer, num_retries 0, think-stripping, a cost row per call, budget gate, no key → stage does not run
+    summary: Replaces Ollama entirely. Model ids live only in config; call sites use aliases; the conductor owns retry; today's date injected into every prompt.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm, arch:chokepoints, arch:plan-v3]
+    serves: [constraint:no-local-model, constraint:student-budget, constraint:approval-first]
+    replaces: [feature:local-model-qwen3-4b, feature:single-llm-client-seam]
+  - id: feature:lexical-fit-prefilter
+    label: Model-free lexical fit — rarity-weighted vocabulary overlap between resume and JD, stemmed, stop-listed
+    summary: CHOKEPOINTS fit.py applied to jobs. Costs nothing, runs over every posting, replaces the embedding prefilter that needed a local embedder.
+    status: gap
+    stage: stage:embed
+    proposed_by: [arch:chokepoints, arch:plan-v3]
+    serves: [constraint:student-budget, constraint:no-local-model]
+    replaces: [feature:embedding-prefilter-percentile]
+  - id: feature:cheap-triage-agent
+    label: Triage agent on the cheap alias — worth scoring? region? remote? sponsorship stated?
+    summary: The middle of the cost gradient — ₹0.05 per JD — so the judge only reads plausible roles.
+    status: gap
+    stage: stage:score
+    proposed_by: [arch:plan-v3, arch:orchestration]
+    serves: [constraint:student-budget]
+  - id: feature:agent-runtime-capabilities
+    label: pydantic-ai agent runtime — typed I/O, narrow tool surface, enforce_capability first line of every tool, budget triple, EXECUTE_OUTREACH held by nobody
+    summary: gtm-arch §10 in ~300 lines. Depth ≤ 2, no agent calls an agent, a tripped budget returns partial, unknown tool is a hard error.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm, arch:orchestration, arch:plan-v3]
+    serves: [guarantee:human-gate, constraint:approval-first]
+    replaces: [feature:llm-supervisor-hierarchy]
+  - id: feature:durable-run-ledger
+    label: agent_run + agent_run_cost + apify_run_log — every invocation a row with phases, status, tokens, INR, error, parent_run_id
+    summary: Cost is a column, not a log line. Resumable; the conductor parses output rows, never transcripts.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm, arch:zon, arch:chokepoints, arch:orchestration]
+    serves: [constraint:student-budget, constraint:approval-first]
+    replaces: [feature:api-cost-ledger]
+  - id: feature:budgets-py
+    label: budgets.py — every timeout, threshold and cap in one file, pinned by a test; no AUTO_REJECT symbol
+    summary: A silent retune is impossible; a pytest gate asserts the auto-reject constant does not exist.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm]
+    serves: [constraint:approval-first]
+  - id: feature:proposal-tables
+    label: fact_proposal + draft_proposal — every agent write is a proposal; facts promote at ≥ 0.85, review 0.70–0.85, review-with-reason below; drafts always HITL; never auto-reject
+    summary: gtm-arch's promotion path. Contact role, seniority, email and employer are facts with evidence; drafts carry claims with spans.
+    status: gap
+    stage: stage:review
+    proposed_by: [arch:gtm, arch:orchestration, arch:plan-v3]
+    serves: [guarantee:human-gate, guarantee:no-fabrication, guarantee:confidence-labels]
+  - id: feature:immutable-artifacts-v3
+    label: artifact table — every fetched document append-only with content_hash; evidence spans point here
+    summary: Revives the dropped idea because the faithfulness gate needs something to point at. Kinds — posting, team_page, repo, profile, search_result, reply.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm, arch:orchestration, arch:plan-v3]
+    serves: [guarantee:no-fabrication]
+    replaces: [feature:immutable-artifacts-content-hash]
+  - id: feature:faithfulness-and-publish-gate
+    label: Faithfulness gate (span exists · span supports) + publish gate (every proper noun and number matches a span or profile field) — strip, never rewrite
+    summary: gtm-arch faithfulness.py plus CHOKEPOINTS publish_gate.py applied to outbound text. A draft left generic is labelled generic and shown as such.
+    status: gap
+    stage: stage:draft
+    proposed_by: [arch:gtm, arch:chokepoints, arch:orchestration, arch:gemini]
+    serves: [guarantee:no-fabrication]
+    replaces: [feature:evidence-spans-faithfulness-auditor, feature:fabrication-validator-cheap]
+  - id: feature:politeness-core
+    label: fetch.py — the only place the network is touched for free sources; robots when real, per-host rate, disk cache by URL hash, real UA, 20 s / 2 MB bounds; CI grep for any other httpx call
+    summary: CHOKEPOINTS §9.1.1 verbatim. Read the documented rate and honour it deliberately.
+    status: gap
+    stage: stage:scrape
+    proposed_by: [arch:chokepoints, arch:gtm]
+    serves: [constraint:free-tier]
+  - id: feature:staging-audit-promote
+    label: Every channel writes staging; promote previews by default, --apply refuses on a failing audit and restores the backup
+    summary: No scraper writes company / job / contact. Dedup on normalised name and domain root; review the drop list.
+    status: gap
+    stage: stage:scrape
+    proposed_by: [arch:chokepoints]
+    replaces: [feature:staging-promote-gate]
+  - id: feature:tick-conductor
+    label: tick.py under launchd — hourly, fcntl-locked, spends this hour's rate budget and today's money budget, most-stale work first, source_health with backoff, exits in minutes
+    summary: The conductor is a bounded slice, not a long-running process. APScheduler removed. A source at 0 twice is a failure in the morning report.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:chokepoints, arch:orchestration]
+    serves: [constraint:single-user-laptop]
+    replaces: [feature:launchd-tick, feature:deterministic-orchestrator, feature:source-freshness-alarm]
+  - id: feature:research-rig-cited
+    label: Brave Search + politeness-core fetch + cheap model → observations and facts that each carry an artifact span; uncited items dropped; source quality classified separately
+    summary: CHOKEPOINTS research_brave.py and gtm-arch web_search/web_fetch (SSRF-guarded, no redirects). The drafter never receives an uncited observation.
+    status: gap
+    stage: stage:research
+    proposed_by: [arch:chokepoints, arch:gtm, arch:orchestration]
+    serves: [guarantee:no-fabrication, constraint:free-tier]
+    replaces: [feature:person-research-honest-hook]
+  - id: feature:apify-client-v3
+    label: apify.py — PINNED_ACTORS in ~ form with version, output_model and estimated cost; run-sync endpoint; 30-day cache keyed on (actor, version, input hash); budget pre-flight; ?maxCharge; shape mismatch non-retryable; Bearer only
+    summary: gtm-arch §9 and zon-arch §13.1 merged. Called only for scored companies with no GitHub org.
+    status: gap
+    stage: stage:contacts
+    proposed_by: [arch:gtm, arch:zon]
+    serves: [constraint:student-budget, constraint:no-linkedin-automation]
+    replaces: [feature:apify-cache-ledger]
+  - id: feature:telegram-review-surface
+    label: Telegram bot — proposal cards with Approve / Edit / Reject / Skip, atomic pending→processing claim, Edit becomes edited_body, budget alerts at 80%, morning report
+    summary: zon-arch's Slack-as-UI translated to a free bot for two people. Telegram records the decision; only the API's approval handler acts on it.
+    status: gap
+    stage: stage:review
+    proposed_by: [arch:zon, arch:plan-v3]
+    serves: [constraint:ten-minute-review, guarantee:human-gate]
+  - id: feature:morning-report
+    label: Daily report — sources at 0, scores, people by channel, drafts owed, sends left, replies by class, events today, money spent by vendor and alias against caps
+    summary: A silent partial run is worse than a loud one.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:chokepoints, arch:orchestration]
+    serves: [constraint:student-budget]
+  - id: feature:kill-hardened-stages
+    label: Every multi-item stage appends and fsyncs per item and skips ids already present on restart — a relaunch never re-spends a paid call
+    summary: CHOKEPOINTS §13.1.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:chokepoints]
+    serves: [constraint:student-budget]
+  - id: feature:ci-guardrails
+    label: CI greps and tests — no ollama import, no network outside the four adapters, no untimed wait, Apify Bearer only, no AUTO_REJECT, EXECUTE_OUTREACH unheld, every tool has a capability, every constant pinned
+    summary: gtm-arch §16 custom guardrails, adapted.
+    status: gap
+    stage: stage:platform
+    proposed_by: [arch:gtm, arch:plan-v3]
+    serves: [constraint:approval-first, constraint:no-local-model]
+    replaces: [feature:layering-lint]
+
+# ------------------------------------------------------------------ decisions (FINAL-PLAN §3 + this session)
+decisions:
+  - id: decision:d1-python
+    label: D1 — Python, not TypeScript
+    summary: The value of the system sits in the scraping, PDF and email ecosystem, which is Python's. The frontend stays Next.js over REST. Consequence — the portal's layering lint doesn't port; the rule holds by convention.
+    adopts: [feature:python-pipeline-nextjs-ui]
+    rejects: [feature:typescript-drizzle-stack]
+    recorded_in: arch:final
+  - id: decision:d2-model-size
+    label: D2 — (reversed by D18) qwen3:4b, the size the machine can actually hold
+    summary: REVERSED 2026-08-31 — Ollama wrecks the machine; see D18. Every draft assumed 14B and 16 GB; the machine has 8. 4B ranks correctly on real postings (verified by hand); calibration against real screens is still unmeasured. Fixed num_ctx + keep_alive 30m are load-bearing.
+    adopts: [feature:local-model-qwen3-4b]
+    rejects: [feature:local-model-14b-tiered]
+    recorded_in: arch:final
+  - id: decision:d3-no-hosted-model
+    label: D3 — (reversed by D18) No hosted model; local wins
+    summary: REVERSED 2026-08-31 — OpenRouter is the only provider; see D18. TOOLS budgeted Claude for drafts; ORCHESTRATION said "there is no LLM API key, and that is the point." Local wins — it was the original constraint, the review queue catches weak prose, and llm.py is a one-line seam. Pull that seam first if reply rates are bad.
+    adopts: [feature:local-llm-drafting, feature:single-llm-client-seam]
+    rejects: [feature:hosted-claude-drafting]
+    recorded_in: arch:final
+  - id: decision:d4-deterministic-orchestrator
+    label: D4 — The orchestrator is code; there are no supervisor agents
+    summary: Every supervisor decision is a ten-line policy with a config value. What survived — the state machine, narrow workers, typed contracts, depth cap, fault isolation. What was dropped — envelopes, capability narrowing, the run tree.
+    adopts: [feature:deterministic-orchestrator, feature:sequential-typed-handoffs, feature:fault-isolated-sources]
+    rejects: [feature:llm-supervisor-hierarchy, feature:circuit-breaker-source-health, feature:immutable-artifacts-content-hash]
+    recorded_in: arch:final
+  - id: decision:d5-github-spike
+    label: D5 — The GitHub email spike came back good, bimodally
+    summary: Supabase 12/12, Affirm 20/20, GitLab 5/5, Observe.AI 0 (no org). Person-event mining yields nothing (GitHub removed commit detail from PushEvent); the repo commits endpoint still carries author emails. Infra/devtools companies are cheap to contact; companies without public code should be skipped, not guessed at.
+    adopts: [feature:github-commit-mining, feature:skip-company-not-guess]
+    recorded_in: arch:final
+  - id: decision:d6-free-tier
+    label: D6 — Free tier only; no paid finders or verification credits
+    summary: The waterfall can take paid tiers but free tiers are doing the work. Hunter's 25/mo is reserved for learning a company's pattern. Revisit if verified rate drops below ~20%.
+    adopts: [feature:hunter-free-tier-for-patterns, feature:email-pattern-inference]
+    rejects: [feature:paid-email-finders-verification]
+    recorded_in: arch:final
+  - id: decision:d7-smtp-off
+    label: D7 — SMTP RCPT probing is off; TOOLS.md was right
+    summary: Built on by default, which was wrong. Port 25 is blocked residentially, big providers accept every recipient at the edge, and probing risks an IP listing. MX lookup stays.
+    adopts: [feature:mx-check-only]
+    rejects: [feature:smtp-rcpt-probe]
+    recorded_in: arch:final
+  - id: decision:d8-three-tiers
+    label: D8 — Three confidence tiers, never collapsed
+    summary: verified / pattern-guessed / scraped, named for what the user needs to distinguish. Shown everywhere, never defaulted.
+    adopts: [feature:three-confidence-tiers]
+    recorded_in: arch:final
+  - id: decision:d9-no-sqlite-vec
+    label: D9 — SQLite, one file, no vector extension
+    summary: Plain-Python cosine over cached vectors is sub-second at 1,100 postings. Revisit past ~50k.
+    adopts: [feature:sqlite-single-file, feature:resume-vector-cache]
+    rejects: [feature:sqlite-vec]
+    recorded_in: arch:final
+  - id: decision:d10-kg-in-sqlite
+    label: D10 — The knowledge graph lives in SQLite with NetworkX on top, not in a graph database
+    summary: Same logic as D9 — Neo4j needs a daemon, Kùzu was archived in late 2025, LLM-memory frameworks want a server-class backend. Two tables and an FTS5 index in jobhunter.db keep it in the one file that's backed up; NetworkX gives centrality, paths and GraphML export in memory.
+    adopts: [feature:knowledge-graph-context]
+  - id: decision:d11-sqlite-not-csv
+    label: D11 — SQLite stays; CSV is an interface, not the store
+    summary: The restated problem asked for CSV and no database. A CSV cannot hold dedup keys, scores, contacted-when, budgets or reply state. Export and import CSVs exist for the two of us; the state stays in jobhunter.db.
+    adopts: [feature:csv-import-export]
+    rejects: [feature:csv-as-the-store]
+    recorded_in: arch:plan-v2
+  - id: decision:d12-linkedin-no-cookies-only
+    label: D12 — LinkedIn data comes from public no-cookies channels or not at all
+    summary: Free path first (GitHub commits, site, pattern). Where that yields nothing at a graded company, an Apify no-cookies employee harvest at ~$0.15/company behind a $0.50/day gate. Our own LinkedIn is used by hand for the alumni filter and never automated.
+    adopts: [feature:apify-employee-harvest, feature:apify-cache-ledger]
+    recorded_in: arch:plan-v2
+  - id: decision:d13-agents-are-workers
+    label: D13 — "Multi-agent" means narrow LLM workers under a deterministic conductor
+    summary: Salary extractor, fit judge, role classifier, researcher, drafter, reply classifier, schedule extractor, follow-up drafter. Each has a typed input and output and a budget; none calls another; none can send; deterministic code decides what runs. D4 restated with a roster.
+    adopts: [feature:role-classifier, feature:reply-intent-extraction, feature:deterministic-orchestrator]
+    recorded_in: arch:plan-v2
+  - id: decision:d14-regions-and-feasibility
+    label: D14 — Target regions and pay are config; the scorer knows about visa feasibility
+    summary: search.regions with per-region floors; a fifth rubric dimension for remote-from-India / sponsorship / new-grad visa realism; a hard cap on US on-site with no sponsorship statement.
+    adopts: [feature:region-currency-targeting, feature:location-feasibility-score]
+    recorded_in: arch:plan-v2
+  - id: decision:d15-two-candidates
+    label: D15 — Two candidates, one pipeline, one of us per contact per month
+    summary: Per-candidate scores, drafts, sends, budgets and Gmail; shared companies, jobs and contacts; the cooldown is enforced in the drafter.
+    adopts: [feature:multi-candidate, feature:cross-candidate-cooldown]
+    recorded_in: arch:plan-v2
+  - id: decision:d16-openrouter-writing-tier
+    label: D16 — OpenRouter for the writing tasks, local for everything else, both behind the permission gate
+    summary: Revises D3. Drafts, follow-ups and the approval assistant may run on a cheap hosted model via one OpenRouter key (≤ 80 calls/day, ≤ ₹400/month); scoring, embeddings, research and reply classification stay local; any failure or a missing key falls back to local. Disabled until enabled in permissions.yaml.
+    adopts: [feature:openrouter-task-routing, feature:approval-assistant]
+    rejects: [feature:hosted-claude-drafting]
+    recorded_in: arch:plan-v2
+  - id: decision:d17-approval-first
+    label: D17 — Nothing runs or gets built without permission
+    summary: The permission gate is build step 0 and every later step is gated by it; the build itself proceeds one approved step at a time with a note after each.
+    adopts: [feature:permission-gate, feature:action-log, feature:build-approval-protocol]
+    recorded_in: arch:plan-v2
+  - id: decision:d18-no-local-model
+    label: D18 — No Ollama, no local model; OpenRouter is the only model provider
+    summary: Reverses D2 and D3. Ollama has wrecked the machine every time. Aliases cheap / judge / writer over one key, num_retries 0, a cost row per call, daily and monthly caps in permissions.yaml, the lexical fit gate at the wide end of the funnel so the model only reads plausible jobs.
+    adopts: [feature:openrouter-model-layer, feature:lexical-fit-prefilter, feature:cheap-triage-agent]
+    rejects: [feature:local-model-qwen3-4b, feature:local-llm-drafting, feature:embedding-prefilter-percentile, feature:resume-vector-cache]
+    recorded_in: arch:plan-v3
+  - id: decision:d19-agents-propose-runtime-enforces
+    label: D19 — Agents are pydantic-ai workers that can only propose; capabilities and budgets are enforced by the runtime, not the prompt
+    summary: gtm-arch's agent runtime and proposal path, MULTI-AGENT's depth cap and envelopes, without Temporal. Every write is a fact_proposal or draft_proposal; every run is a ledger row; EXECUTE_OUTREACH is held by nobody.
+    adopts: [feature:agent-runtime-capabilities, feature:proposal-tables, feature:durable-run-ledger, feature:budgets-py, feature:immutable-artifacts-v3, feature:faithfulness-and-publish-gate]
+    rejects: [feature:llm-supervisor-hierarchy]
+    recorded_in: arch:plan-v3
+  - id: decision:d20-three-channel-scraping
+    label: D20 — Three scraping channels behind one politeness core, one staging area, one audit gate, driven by a launchd tick
+    summary: CHOKEPOINTS' engine shape — keyless channel at the documented rate 24/7, Apify no-cookies channel behind a budget, Brave research channel returning only cited facts — replaces per-scraper clients and APScheduler.
+    adopts: [feature:politeness-core, feature:staging-audit-promote, feature:tick-conductor, feature:research-rig-cited, feature:apify-client-v3, feature:morning-report, feature:kill-hardened-stages]
+    rejects: [feature:circuit-breaker-source-health]
+    recorded_in: arch:plan-v3
+  - id: decision:d21-telegram-review
+    label: D21 — Telegram is the second review surface, with the atomic-claim pattern
+    summary: zon-arch's Slack cards for two people on a free bot. Decisions are recorded by Telegram and acted on only by the API's approval handler.
+    adopts: [feature:telegram-review-surface]
+    recorded_in: arch:plan-v3
+
+# ------------------------------------------------------------------ gaps, in build order (FINAL-PLAN §10–11)
+gaps:
+  - id: gap:16-permission-gate
+    label: V3 #0 — Permission gate + ledgers (permissions.yaml, budgets.py, approval_request, action_log, agent_run, costs)
+    priority: 0
+    summary: Everything later is gated by it. Wrap Hunter and send_email first.
+    builds: [feature:permission-gate, feature:action-log, feature:durable-run-ledger, feature:budgets-py]
+    protects: [guarantee:human-gate, guarantee:budget-spent-well]
+  - id: gap:18-model-layer
+    label: V3 #1 — OpenRouter model layer + pydantic-ai runtime + capabilities; remove Ollama
+    priority: 0.5
+    summary: Makes the machine safe to run on. openrouter.py with aliases and a cost row per call; llm.py deleted; grep -ri ollama returns 0.
+    builds: [feature:openrouter-model-layer, feature:agent-runtime-capabilities, feature:ci-guardrails]
+    protects: [guarantee:budget-spent-well]
+  - id: gap:19-scoring-v3
+    label: V3 #2 — Lexical fit → triage → judge with the feasibility dimension; job_score per candidate; rescore
+    priority: 0.7
+    summary: The cost gradient with no model at the wide end.
+    builds: [feature:lexical-fit-prefilter, feature:cheap-triage-agent, feature:location-feasibility-score, feature:region-currency-targeting]
+  - id: gap:20-proposals-gates
+    label: V3 #5 — artifact, fact_proposal, draft_proposal, thresholds, faithfulness + publish gates, reviewer agent
+    priority: 4.5
+    summary: Every agent write becomes a proposal; drafts carry claims with spans; unsupported specifics are stripped.
+    builds: [feature:proposal-tables, feature:immutable-artifacts-v3, feature:faithfulness-and-publish-gate, feature:approval-assistant, feature:humanisation-lint]
+    protects: [guarantee:no-fabrication, guarantee:human-gate]
+  - id: gap:21-telegram
+    label: V3 #6 — Telegram review surface + morning report
+    priority: 4.7
+    summary: Approve from the phone; a double tap yields one send.
+    builds: [feature:telegram-review-surface, feature:morning-report]
+  - id: gap:22-scraping-engine
+    label: V3 #7 — fetch.py politeness core, tick.py + launchd, source_health, staging/audit/promote, funding RSS; remove APScheduler
+    priority: 5.5
+    summary: The CHOKEPOINTS engine shape.
+    builds: [feature:politeness-core, feature:tick-conductor, feature:staging-audit-promote, feature:funding-feed-registry, feature:kill-hardened-stages]
+  - id: gap:23-people-v3
+    label: V3 #8 — apify.py pin registry, employee harvest, role classifier, referral ranking, Brave research rig
+    priority: 6.5
+    summary: Three channels for people; only cited observations reach the drafter.
+    builds: [feature:apify-client-v3, feature:apify-employee-harvest, feature:role-classifier, feature:referral-ability-ranking, feature:research-rig-cited, feature:untrusted-content-wrapper]
+  - id: gap:0-gmail-e2e
+    label: Gmail OAuth credentials + end-to-end dry run to a second inbox
+    priority: 1
+    summary: The only untested path. Everything downstream is theory until one email sends, gets replied to, and classifies correctly.
+    builds: [feature:gmail-api-own-account, feature:reply-classification, feature:single-followup]
+  - id: gap:1-send-ledger
+    label: GAP-1 — Send budget should be a ledger, not a count
+    priority: 2
+    summary: A crash between the Gmail call and the DB write loses a send from the count. Small change; the failure it prevents damages the Gmail account. Do it before the first real send.
+    builds: [feature:send-budget-ledger]
+    protects: [guarantee:budget-spent-well]
+  - id: gap:4-guessed-cap-expiry
+    label: GAP-4 — guessed-send cap and draft expiry
+    priority: 3
+    summary: At most 5 of 25 to unverified addresses; drafts expire at 7 days. Two small checks, both protect the account.
+    builds: [feature:guessed-send-cap-5, feature:draft-expiry-7d]
+    protects: [guarantee:confidence-labels, guarantee:budget-spent-well]
+  - id: gap:2-fabrication-check
+    label: GAP-2 — Anti-fabrication is a prompt, not a check
+    priority: 4
+    summary: Highest-value correctness gap. Extract proper nouns and numbers from the draft, check each against the researcher's input, flag mismatches in the review UI. Before volume — one invented claim is worse than fifty generic emails.
+    builds: [feature:fabrication-validator-cheap]
+    protects: [guarantee:no-fabrication]
+  - id: gap:6-tests-lint
+    label: GAP-6 — No tests, no layering lint
+    priority: 5
+    summary: Salary parsing against a fixture table, scraper parsing against recorded JSON, ~20 hand-labelled scoring fixtures. Cheapest insurance on the two subtlest pieces of logic.
+    builds: [feature:tests-fixtures, feature:scoring-fixtures-calibration, feature:layering-lint]
+  - id: gap:3-warmth-tiers
+    label: GAP-3 — Warmth tiers + alumni CSV
+    priority: 6
+    summary: The biggest conversion lever, deliberately after correctness. A message to a fellow Newton School alum converts differently to a cold one.
+    builds: [feature:warmth-tiers, feature:manual-linkedin-alumni-csv]
+    protects: [guarantee:budget-spent-well]
+  - id: gap:7-calibration
+    label: GAP-7 — Calibration is unmeasured
+    priority: 7
+    summary: Needs an outcomes table and the discipline to record what happened. Only meaningful after a month of real replies.
+    builds: [feature:outcomes-table-calibration, feature:rubric-version-on-scores]
+  - id: gap:5-playwright
+    label: GAP-5 — Playwright scrapers, or the manual registry route
+    priority: 8
+    summary: Last, or never. Browsing the Indian boards by hand and pasting company names is cheaper and safer.
+    builds: [feature:manual-registry-route, feature:playwright-india-boards]
+  - id: gap:8-freshness-alarm
+    label: Source freshness alarm
+    priority: 9
+    summary: A source returning 0 twice running should be reported as a failure, not a quiet day. per_source is recorded; nothing reads it.
+    builds: [feature:source-freshness-alarm]
+  - id: gap:11-two-candidates
+    label: V2 #6 — Two candidates with a cross-candidate cooldown
+    priority: 12
+    summary: Three evenings. Doubles the ceiling without doubling the spam.
+    builds: [feature:multi-candidate, feature:cross-candidate-cooldown]
+  - id: gap:13-calendar
+    label: V2 #8 — Replies → events → calendar + notifications
+    priority: 14
+    summary: Four evenings. The genuinely new subsystem; the thing that makes a "yes" not get lost.
+    builds: [feature:reply-intent-extraction, feature:calendar-events, feature:conflict-reschedule-draft]
+    protects: [guarantee:human-gate]
+  - id: gap:15-apify-harvest
+    label: V2 #10 — Apify no-cookies employee harvest, budget-gated
+    priority: 16
+    summary: Two evenings, ≤ ₹1,000/month. People at companies with no public code. Measure verified-email yield after pattern inference before keeping it.
+    builds: [feature:apify-employee-harvest, feature:apify-cache-ledger, feature:untrusted-content-wrapper]
+
+# ------------------------------------------------------------------ failure modes (FINAL-PLAN §12)
+failure_modes:
+  - id: failure:source-breaks-silently
+    label: A source breaks silently
+    likelihood: 1
+    summary: Board changes shape, scraper returns 0, nothing errors. Signal — one source's count drops to 0 while others are normal.
+    mitigated_by: [feature:fault-isolated-sources, feature:source-freshness-alarm]
+  - id: failure:human-stops-reviewing
+    label: The human stops reviewing
+    likelihood: 2
+    summary: Queue depth grows, approvals go to zero. A backlog of unread drafts is pure waste.
+    mitigated_by: [feature:draft-expiry-7d, feature:keyboard-driven-review]
+  - id: failure:model-degrades-long-runs
+    label: The local model degrades on long runs
+    likelihood: 3
+    summary: Ollama evicting/reloading under 8 GB pressure — a scoring pass suddenly takes minutes per job. Fixed by fixed num_ctx + keep_alive; re-check if a third model is ever added.
+    mitigated_by: [feature:local-model-qwen3-4b, feature:single-llm-client-seam]
+  - id: failure:bounces-damage-account
+    label: Bounces damage the sending account
+    likelihood: 4
+    summary: Guessed addresses fail; Gmail notices the pattern.
+    mitigated_by: [feature:guessed-send-cap-5, feature:three-confidence-tiers, feature:contact-ranker]
+  - id: failure:drafts-read-as-templates
+    label: Drafts read as templates
+    likelihood: 5
+    summary: Reply rate flat and low. If you find yourself approving without editing, that's the signal.
+    mitigated_by: [feature:review-queue-human-gate, feature:voice-checker, feature:warmth-tiers]
+  - id: failure:github-rate-limit
+    label: GitHub rate limit stalls contact discovery
+    likelihood: 6
+    summary: 60/hr unauthenticated stalls after ~3 companies.
+    mitigated_by: [feature:github-token-rate-limit]
+  - id: failure:commit-mining-yields-nothing
+    label: Commit mining yields nothing for companies without public code
+    likelihood: 7
+    summary: Expected, not a bug. Site scrape is the fallback; if both fail, skip rather than guess.
+    mitigated_by: [feature:team-page-scrape, feature:skip-company-not-guess]
+
+# ------------------------------------------------------------------ open questions (FINAL-PLAN §14 + orchestration §20)
+open_questions:
+  - id: question:q1-4b-good-enough
+    label: Does 4B stay good enough as volume grows?
+    summary: Ranking is right today. If reply rates are poor and drafts read stiff — better local model on a bigger machine first, then hosted model for drafting only.
+    about: [decision:d2-model-size, decision:d3-no-hosted-model]
+  - id: question:q2-review-ten-minutes
+    label: Does review actually take ten minutes?
+    summary: Unmeasured — there has been one draft. Measure before scaling to 25/day.
+    about: [constraint:ten-minute-review, feature:review-queue-human-gate]
+  - id: question:q3-warmth-vs-score
+    label: Warmth or score as the primary sort?
+    summary: TOOLS argues warmth. Untested because warmth isn't built.
+    about: [feature:warmth-tiers]
+  - id: question:q4-percentile-70
+    label: Is the 70th-percentile prefilter the right number?
+    summary: Keeps the top 30% (~330 of 1,100). Chosen from the similarity distribution, not from outcomes.
+    about: [feature:embedding-prefilter-percentile]
+  - id: question:q5-reply-different-address
+    label: What happens when a company replies from a different address?
+    summary: Thread matching by gmail_thread_id handles most of it; person-level identity across addresses is unsolved.
+    about: [feature:reply-classification]
+  - id: question:q6-apify-worth-it
+    label: Is $0.15/company of Apify data worth more than the same evenings on warmth tiers?
+    summary: Measure the verified-email rate of Apify-sourced contacts after pattern inference before deciding.
+    about: [feature:apify-employee-harvest, feature:warmth-tiers]
+  - id: question:q7-low-grade-sends
+    label: Should low-grade (< 40) roles ever be auto-drafted?
+    summary: The plan says no, MOTIV says "still send". Resolve after a month of outcomes.
+    about: [feature:llm-rubric-scoring, decision:d14-regions-and-feasibility]
+
+# ------------------------------------------------------------------ milestones (dated notes; `kg note` adds more)
+notes:
+  - id: note:2026-07-31-project-scaffolded
+    label: Project scaffolded — first commit
+    date: "2026-07-31"
+    summary: Python 3.12 + uv, SQLModel schema, Ollama client, seven Tier-1 scrapers, companies.yaml seed, FastAPI + Next.js dashboard skeleton. PLAN.md written the same day.
+    about: [arch:plan]
+  - id: note:2026-08-01-architecture-drafts
+    label: Three competing architecture drafts written after reading the MVRX portal
+    date: "2026-08-01"
+    summary: JOBHUNTER-ARCHITECTURE (TS, portal lessons), JOBHUNTER-TOOLS (services + warmth ladder), MULTI-AGENT-ORCHESTRATION (gtm-os patterns), GEMINI (guardrails + provenance), plus IDEA.md. They disagree on language, model strategy and orchestration.
+    about: [arch:architecture, arch:tools, arch:orchestration, arch:gemini, arch:idea]
+  - id: note:2026-08-02-config-tuned-for-8gb
+    label: Config tuned for the real machine
+    date: "2026-08-02"
+    summary: qwen3:4b instead of 14B, percentile prefilter instead of absolute threshold, SMTP probe turned off, keep_alive 30m, fixed num_ctx.
+    about: [decision:d2-model-size, decision:d7-smtp-off, feature:embedding-prefilter-percentile]
+  - id: note:2026-08-29-final-plan-reconciled
+    label: FINAL-PLAN.md reconciles the drafts against running code
+    date: "2026-08-29"
+    summary: Measured on the live DB — 1,100 jobs stored of 11,282 scraped, 94 ATS boards verified, 102 scored, 26 high matches, 263 companies, 25/25 contacts verified, 1 draft. Working end to end through draft; approve → send → reply → follow-up untested.
+    about: [arch:final]
+  - id: note:2026-08-30-knowledge-graph-added
+    label: Knowledge graph added — data + context layers in jobhunter.db
+    date: "2026-08-30"
+    summary: jobhunter/kg (store, context, sync, compose, brief, export), knowledge/context.yaml seed, `kg` CLI and /api/kg routes, scheduler syncs after each cycle, CLAUDE.md points new sessions at knowledge/BRIEF.md.
+    about: [feature:knowledge-graph-context, decision:d10-kg-in-sqlite, constraint:context-continuity]
+  - id: note:2026-08-30-problem-restated-plan-v2
+    label: Problem restated in knowledge/MOTIV.md; FINAL-PLAN-V2 written
+    date: "2026-08-30"
+    summary: Tejmul restated the problem — the US/UK/DE pay arbitrage, funded startups not hyped names, India only at ₹30 LPA+, 10–30 people per company with roles, replies → calendar, two candidates. CHOKEPOINTS.md, gtm-arch.md and zon-arch.md added to system docs and decomposed into the graph. V2 keeps D1–D10, adds D11–D15 and gaps 9–15.
+    about: [arch:plan-v2, arch:chokepoints, arch:gtm, arch:zon, problem:zonuly]
+  - id: note:2026-08-30-openrouter-reverted-permission-system
+    label: OpenRouter routing prototype reverted; permission system and tool inventory added to the plan
+    date: "2026-08-30"
+    summary: Tejmul asked for OpenRouter for the writing tasks, then asked for a plan-first, approval-gated process with a full tool list. The per-task routing that had been wired into llm.py/config was reverted (verified identical to HEAD). FINAL-PLAN-V2 gained D16 (OpenRouter writing tier), §12 tool inventory, §13 permission and guardrail system, §14 build protocol with 14 numbered steps awaiting approval.
+    about: [decision:d16-openrouter-writing-tier, decision:d17-approval-first, feature:permission-gate, arch:plan-v2]
+  - id: note:2026-08-30-three-docs-read-in-full
+    label: zon-arch.md, gtm-arch.md and MULTI-AGENT-ORCHESTRATION.md read in full; CHOKEPOINTS.md too
+    date: "2026-08-30"
+    summary: The first pass had skipped zon-arch §10–24 and gtm-arch §15–18. Read now. Added to the plan — Apify client mechanics (sync endpoint, ~ ids, 30-day cache, non-retryable shape errors), the calendar syncToken/410/notified_at flow, the humanisation vocabulary, date injection into prompts, aliases not model ids, and seven more bugs-already-paid-for.
+    about: [arch:zon, arch:gtm, arch:orchestration, arch:chokepoints, arch:plan-v2]
+  - id: note:2026-08-31-plan-v3-no-ollama
+    label: FINAL-PLAN-V3 written from gtm-arch, zon-arch and CHOKEPOINTS; Ollama removed from the plan entirely
+    date: "2026-08-31"
+    summary: Tejmul rejected v2 as "the old architecture with deltas" and ruled out Ollama (it wrecks the machine). v3 rebuilds on the three documents — OpenRouter-only aliases with ledgers and caps, pydantic-ai agents that can only propose, fact/draft proposals with thresholds, faithfulness and publish gates, politeness core + tick + staging/promote, Apify pin registry, Brave research rig, Telegram review cards, calendar syncToken flow. D18–D21 recorded; v2 gaps replaced by 13 numbered v3 steps awaiting approval. No app code changed.
+    about: [arch:plan-v3, decision:d18-no-local-model, decision:d19-agents-propose-runtime-enforces, decision:d20-three-channel-scraping, decision:d21-telegram-review, constraint:no-local-model]

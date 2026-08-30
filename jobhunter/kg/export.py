@@ -1,0 +1,125 @@
+"""Export the graph as JSON, or as a standalone HTML viewer with the data embedded.
+
+The viewer is a single file — open knowledge/graph.html in a browser. Unscored jobs
+are left out by default; a force layout with 1,100 identical job dots says nothing.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from jobhunter import ROOT
+from jobhunter.kg.store import Graph
+
+HTML_PATH = ROOT / "knowledge" / "graph.html"
+JSON_PATH = ROOT / "knowledge" / "graph.json"
+
+
+def to_dict(*, include_all_jobs: bool = False, layer: str | None = None) -> dict:
+    with Graph() as g:
+        sg = g.subgraph(layer=layer)
+    nodes = sg["nodes"]
+    if not include_all_jobs:
+        nodes = [n for n in nodes if not (n["kind"] == "job" and n["props"].get("score") is None)]
+    ids = {n["id"] for n in nodes}
+    edges = [e for e in sg["edges"] if e["src"] in ids and e["dst"] in ids]
+    slim = [
+        {
+            "id": n["id"], "kind": n["kind"], "layer": n["layer"], "label": n["label"],
+            "summary": n.get("summary"), "props": n["props"],
+        }
+        for n in nodes
+    ]
+    return {"nodes": slim, "edges": [{"src": e["src"], "rel": e["rel"], "dst": e["dst"]} for e in edges]}
+
+
+def write_json(path: Path | str = JSON_PATH, **kw) -> str:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(to_dict(**kw), ensure_ascii=False, default=str), encoding="utf-8")
+    return str(path)
+
+
+def write_html(path: Path | str = HTML_PATH, **kw) -> str:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(to_dict(**kw), ensure_ascii=False, default=str).replace("</", "<\\/")
+    path.write_text(_TEMPLATE.replace("__DATA__", data), encoding="utf-8")
+    return str(path)
+
+
+_TEMPLATE = r"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZoNuLy Knowledge Graph</title>
+<style>
+:root{--bg:#f7f6f2;--fg:#1c1c1a;--muted:#6b6a64;--panel:#ffffff;--line:#e2e0d8;--accent:#b5451b}
+@media(prefers-color-scheme:dark){:root{--bg:#141412;--fg:#ecebe6;--muted:#9a9890;--panel:#1d1d1a;--line:#2f2e29;--accent:#f0865b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,system-ui,Segoe UI,sans-serif;height:100vh;display:grid;grid-template-columns:1fr 360px;grid-template-rows:auto 1fr}
+header{grid-column:1/3;display:flex;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;margin:0 12px 0 0;font-weight:600}
+header input{padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);min-width:220px}
+header label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer}
+header .sw{width:10px;height:10px;border-radius:50%;display:inline-block}
+svg{width:100%;height:100%;display:block}
+aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px}
+aside h2{font-size:14px;margin:0 0 4px}aside .kind{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+aside p{margin:8px 0;color:var(--fg)}aside dl{margin:8px 0;font-size:12px}aside dt{color:var(--muted);margin-top:6px}aside dd{margin:0;word-break:break-word;white-space:pre-wrap}
+aside ul{padding-left:16px;font-size:12px}aside li a{color:var(--accent);cursor:pointer;text-decoration:none}aside li a:hover{text-decoration:underline}
+.hint{color:var(--muted);font-size:12px}
+text{font-size:10px;fill:var(--fg);pointer-events:none}
+</style></head><body>
+<header><h1>ZoNuLy knowledge graph</h1><input id="q" placeholder="search label / summary…"><span id="counts" class="hint"></span><span id="legend"></span></header>
+<svg id="g"></svg>
+<aside id="panel"><p class="hint">Click a node. Drag to move, scroll to zoom. Tick/untick kinds in the header to filter.</p></aside>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const DATA = __DATA__;
+const COLORS = {problem:'#b5451b',arch:'#6b4fbb',decision:'#1f6f8b',feature:'#2e8b57',gap:'#d9822b',failure:'#c0392b',question:'#8e7cc3',constraint:'#7b3f00',guarantee:'#0b6e4f',stage:'#4a4a4a',module:'#5c7cfa',source:'#a67c00',note:'#e0a800',company:'#3b8ea5',job:'#7fb069',contact:'#d1495b',email:'#ff8c42',reply:'#ef476f',profile:'#111',skill:'#adb5bd',ats:'#c9c9c9',channel:'#c9c9c9'};
+const kinds=[...new Set(DATA.nodes.map(n=>n.kind))].sort();
+const hidden=new Set(['skill','ats','channel']);
+const legend=document.getElementById('legend');
+kinds.forEach(k=>{const l=document.createElement('label');const c=document.createElement('input');c.type='checkbox';c.checked=!hidden.has(k);c.onchange=()=>{c.checked?hidden.delete(k):hidden.add(k);render()};l.append(c);const s=document.createElement('span');s.className='sw';s.style.background=COLORS[k]||'#888';l.append(s,k+' '+DATA.nodes.filter(n=>n.kind===k).length);legend.append(l)});
+const byId=Object.fromEntries(DATA.nodes.map(n=>[n.id,n]));
+const svg=d3.select('#g'),W=()=>svg.node().clientWidth,H=()=>svg.node().clientHeight;
+const root=svg.append('g');
+svg.call(d3.zoom().scaleExtent([.1,6]).on('zoom',e=>root.attr('transform',e.transform)));
+let sim,link,node,label;
+function render(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  const nodes=DATA.nodes.filter(n=>!hidden.has(n.kind)).map(n=>Object.assign({},n));
+  const ids=new Set(nodes.map(n=>n.id));
+  const links=DATA.edges.filter(e=>ids.has(e.src)&&ids.has(e.dst)).map(e=>({source:e.src,target:e.dst,rel:e.rel}));
+  document.getElementById('counts').textContent=nodes.length+' nodes · '+links.length+' edges';
+  root.selectAll('*').remove();
+  if(sim)sim.stop();
+  link=root.append('g').attr('stroke','#999').attr('stroke-opacity',.35).selectAll('line').data(links).join('line').attr('stroke-width',1);
+  node=root.append('g').selectAll('circle').data(nodes).join('circle')
+    .attr('r',n=>n.kind==='problem'||n.kind==='profile'?11:n.layer==='context'?7:4.5)
+    .attr('fill',n=>COLORS[n.kind]||'#888').attr('stroke','#fff').attr('stroke-width',1)
+    .attr('opacity',n=>!q||(n.label+' '+(n.summary||'')).toLowerCase().includes(q)?1:.12)
+    .style('cursor','pointer').on('click',(e,n)=>show(n.id))
+    .call(d3.drag().on('start',(e,d)=>{if(!e.active)sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y}).on('drag',(e,d)=>{d.fx=e.x;d.fy=e.y}).on('end',(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null}));
+  node.append('title').text(n=>n.id+'\n'+n.label);
+  label=root.append('g').selectAll('text').data(nodes.filter(n=>n.layer==='context'||n.kind==='profile'||n.kind==='contact'||n.kind==='email')).join('text').attr('dx',9).attr('dy',3).text(n=>n.label.length>38?n.label.slice(0,36)+'…':n.label);
+  sim=d3.forceSimulation(nodes).force('link',d3.forceLink(links).id(d=>d.id).distance(l=>l.rel==='PART_OF'||l.rel==='AT_STAGE'?40:70).strength(.4))
+    .force('charge',d3.forceManyBody().strength(n=>n.layer==='context'?-160:-40)).force('center',d3.forceCenter(W()/2,H()/2)).force('collide',d3.forceCollide(9))
+    .on('tick',()=>{link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);node.attr('cx',d=>d.x).attr('cy',d=>d.y);label.attr('x',d=>d.x).attr('y',d=>d.y)});
+}
+function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function show(id){
+  const n=byId[id];if(!n)return;
+  const out=DATA.edges.filter(e=>e.src===id),inn=DATA.edges.filter(e=>e.dst===id);
+  let h=`<div class="kind">${esc(n.kind)} · ${esc(n.layer)}</div><h2>${esc(n.label)}</h2><div class="hint">${esc(n.id)}</div>`;
+  if(n.summary)h+=`<p>${esc(n.summary)}</p>`;
+  const props=Object.entries(n.props||{}).filter(([k,v])=>v!==null&&v!==''&&!(Array.isArray(v)&&!v.length));
+  if(props.length){h+='<dl>';for(const[k,v]of props){h+=`<dt>${esc(k)}</dt><dd>${esc(typeof v==='object'?JSON.stringify(v,null,1):v)}</dd>`}h+='</dl>'}
+  const li=(e,other)=>`<li><span class="hint">${esc(e.rel)}</span> <a onclick="show('${other}')">${esc(byId[other]?byId[other].label:other)}</a></li>`;
+  if(out.length)h+='<div class="kind">outgoing</div><ul>'+out.map(e=>li(e,e.dst)).join('')+'</ul>';
+  if(inn.length)h+='<div class="kind">incoming</div><ul>'+inn.map(e=>li(e,e.src)).join('')+'</ul>';
+  document.getElementById('panel').innerHTML=h;
+}
+document.getElementById('q').addEventListener('input',()=>{const q=document.getElementById('q').value.trim().toLowerCase();node&&node.attr('opacity',n=>!q||(n.label+' '+(n.summary||'')).toLowerCase().includes(q)?1:.12)});
+render();
+</script></body></html>
+"""

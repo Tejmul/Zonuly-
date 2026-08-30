@@ -18,6 +18,7 @@ from typing import Any, Literal
 import yaml
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlmodel import col, func, select
 
@@ -777,6 +778,115 @@ def gmail_status() -> dict:
     from jobhunter.outreach import sender
 
     return {**gmail.status(), "quota": sender.quota(), "address": gmail.my_address()}
+
+
+# ---------------------------------------------------------------- knowledge graph
+
+@app.get("/api/kg/stats")
+def kg_stats() -> dict:
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        return g.stats()
+
+
+@app.get("/api/kg/search")
+def kg_search(q: str, kind: str | None = None, limit: int = Query(20, le=200), any: bool = False) -> list[dict]:
+    from jobhunter.kg.store import Graph
+
+    kinds = [k.strip() for k in kind.split(",")] if kind else None
+    with Graph() as g:
+        return g.search(q, kinds=kinds, limit=limit, mode="or" if any else "and")
+
+
+@app.get("/api/kg/nodes/{node_id}")
+def kg_node(node_id: str, depth: int = Query(1, le=3)) -> dict:
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        node = g.get(node_id)
+        if node is None:
+            raise HTTPException(404, "unknown node")
+        return {"node": node, **g.neighbors(node_id, depth=depth)}
+
+
+@app.get("/api/kg/path")
+def kg_path(a: str, b: str, max_depth: int = Query(6, le=10)) -> list[dict]:
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        return g.path(a, b, max_depth=max_depth)
+
+
+@app.get("/api/kg/graph")
+def kg_graph(layer: str | None = None, all_jobs: bool = False) -> dict:
+    """The whole graph for a viewer. Unscored jobs are excluded unless asked for."""
+    from jobhunter.kg import export
+
+    return export.to_dict(include_all_jobs=all_jobs, layer=layer)
+
+
+@app.get("/api/kg/hubs")
+def kg_hubs(layer: str = "context", kind: str | None = None, top: int = Query(15, le=100)) -> list[dict]:
+    from jobhunter.kg import analyze
+
+    kinds = [k.strip() for k in kind.split(",")] if kind else None
+    return analyze.hubs(layer=None if layer == "all" else layer, kinds=kinds, top=top)
+
+
+@app.get("/api/kg/brief", response_class=PlainTextResponse)
+def kg_brief() -> str:
+    from jobhunter.kg import brief
+
+    return brief.render()
+
+
+class ComposeIn(BaseModel):
+    statement: str | None = None
+    constraints: list[str] | None = None
+    top: int = 2
+    include_dropped: bool = False
+
+
+@app.post("/api/kg/compose")
+def kg_compose(payload: ComposeIn) -> dict:
+    from jobhunter.kg import compose
+
+    return compose.compose(
+        payload.statement, constraints=payload.constraints, top=payload.top, include_dropped=payload.include_dropped
+    )
+
+
+class NoteIn(BaseModel):
+    text: str
+    about: list[str] = []
+    tags: list[str] = []
+    title: str | None = None
+
+
+@app.post("/api/kg/notes")
+def kg_note(payload: NoteIn) -> dict:
+    from jobhunter.kg import brief
+    from jobhunter.kg.store import Graph
+
+    with Graph() as g:
+        result = g.remember(payload.text, about=payload.about, tags=payload.tags, title=payload.title)
+    result["brief"] = brief.write()
+    return result
+
+
+@app.post("/api/kg/build")
+def kg_build() -> dict:
+    """Reload context.yaml, re-sync every table, rewrite BRIEF.md and the viewer. Background task."""
+    from jobhunter.kg import brief, context, export, sync
+    from jobhunter.kg.store import Graph
+
+    def job() -> dict:
+        with Graph() as g:
+            ctx = context.load(g)
+        return {"context": ctx, "data": sync.sync_all(), "brief": brief.write(), "viewer": export.write_html()}
+
+    return {"task_id": _run_task("kg-build", job)}
 
 
 def serve(host: str | None = None, port: int | None = None, reload: bool = False) -> None:
