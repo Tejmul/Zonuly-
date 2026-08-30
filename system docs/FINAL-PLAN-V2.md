@@ -2,7 +2,7 @@
 
 > **Supersedes `FINAL-PLAN.md` on scope; keeps every one of its decisions D1–D10 that it does
 > not explicitly revise.** Written 2026-08-30 against the restated problem in
-> [`knowledge/MOTIV.md`](../knowledge/MOTIV.md), the running code, and three further
+> [`Motive /MOTIV.md`](Motive%20/MOTIV.md), the running code, and three further
 > architecture documents added this week: `CHOKEPOINTS.md` (a scraping engine built around a
 > rate budget), `gtm-arch.md` (a paid, budget-gated LinkedIn scraping and HITL agent fleet) and
 > `zon-arch.md` (the MVRX portal: Apify cache, calendar sync, Slack-as-UI).

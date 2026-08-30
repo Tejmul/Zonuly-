@@ -6,7 +6,7 @@ Python 3.12 + SQLite + FastAPI in `jobhunter/`, Next.js dashboard in `dashboard/
 
 ## Start here — the knowledge graph
 
-**Read [knowledge/MOTIV.md](knowledge/MOTIV.md) first — the problem statement, motivation, targets and rules, in the users' own words. Then [knowledge/BRIEF.md](knowledge/BRIEF.md).** BRIEF is generated
+**Read [system docs/Motive /MOTIV.md](system%20docs/Motive%20/MOTIV.md) first — the problem statement, motivation, targets and rules, in the users' own words. Then [knowledge/BRIEF.md](knowledge/BRIEF.md).** BRIEF is generated
 from the knowledge graph and carries the problem statement, live pipeline counts, the settled
 decisions (D1–D10), what exists per stage, the gaps in build order, failure modes, open questions,
 and a dated session log. It replaces re-reading the six architecture documents. The graph itself

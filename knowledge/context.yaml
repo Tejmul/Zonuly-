@@ -26,8 +26,8 @@ problem:
     and normal (not Codeforces) DSA. ZoNuLy finds those companies and roles, grades each against our
     resume, finds 10–30 real people per company and labels who can refer, writes one honest email each,
     stops for our approval, sends 25 a day, tracks replies, follows up once, and puts every "yes" on our
-    calendar. Judgement only matters at "yes, send that to that person". Full statement: knowledge/MOTIV.md.
-  file: knowledge/MOTIV.md
+    calendar. Judgement only matters at "yes, send that to that person". Full statement: system docs/Motive /MOTIV.md.
+  file: system docs/Motive /MOTIV.md
   subproblems:
     - slug: hidden-jobs
       label: You never see most of the good jobs
@@ -1645,7 +1645,7 @@ notes:
     summary: jobhunter/kg (store, context, sync, compose, brief, export), knowledge/context.yaml seed, `kg` CLI and /api/kg routes, scheduler syncs after each cycle, CLAUDE.md points new sessions at knowledge/BRIEF.md.
     about: [feature:knowledge-graph-context, decision:d10-kg-in-sqlite, constraint:context-continuity]
   - id: note:2026-08-30-problem-restated-plan-v2
-    label: Problem restated in knowledge/MOTIV.md; FINAL-PLAN-V2 written
+    label: Problem restated in system docs/Motive /MOTIV.md; FINAL-PLAN-V2 written
     date: "2026-08-30"
     summary: Tejmul restated the problem — the US/UK/DE pay arbitrage, funded startups not hyped names, India only at ₹30 LPA+, 10–30 people per company with roles, replies → calendar, two candidates. CHOKEPOINTS.md, gtm-arch.md and zon-arch.md added to system docs and decomposed into the graph. V2 keeps D1–D10, adds D11–D15 and gaps 9–15.
     about: [arch:plan-v2, arch:chokepoints, arch:gtm, arch:zon, problem:zonuly]

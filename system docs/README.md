@@ -5,7 +5,7 @@ Every design document for the project, in reading order. When two disagree,
 
 | Read | File | What it is |
 |---|---|---|
-| 1st | [../knowledge/MOTIV.md](../knowledge/MOTIV.md) | **The problem statement and motivation, in the users' own words** — the pay arbitrage, the targets, the twelve-step process, the funnel numbers, the rules. |
+| 1st | [Motive /MOTIV.md](Motive%20/MOTIV.md) | **The problem statement and motivation, in the users' own words** — the pay arbitrage, the targets, the twelve-step process, the funnel numbers, the rules. |
 | 2nd | [FINAL-PLAN-V3.md](FINAL-PLAN-V3.md) | **The plan.** Built from gtm-arch, zon-arch and CHOKEPOINTS: OpenRouter-only model layer, pydantic-ai agents that can only propose, faithfulness + publish gates, three scraping channels behind a staging gate, launchd ticks, Telegram review, calendar sync, permission system, 13-step build order. |
 | 3rd | [FINAL-PLAN-V2.md](FINAL-PLAN-V2.md) | Superseded by v3. Kept for the restated-problem analysis (§0) and the tool/permission tables it introduced. |
 | 4th | [FINAL-PLAN.md](FINAL-PLAN.md) | Superseded on model strategy and orchestration. Still the record of D1, D5–D9 and what the running code proved. |
@@ -39,7 +39,7 @@ PLAN.md ─────────► code ◄──── JOBHUNTER-ARCHITECTU
                      ▼                                    │
                FINAL-PLAN.md  (reconciles, D1–D10) ───────┤
                      │                                    │
-   knowledge/MOTIV.md (restated problem)                  │
+   system docs/Motive /MOTIV.md (restated problem)                  │
    CHOKEPOINTS.md · gtm-arch.md · zon-arch.md (inputs)    │
                      │                                    │
                      ▼                                    │
