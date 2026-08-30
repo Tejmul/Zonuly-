@@ -1,0 +1,120 @@
+"""APScheduler wiring — the daily loop that runs while the API server is up.
+
+Jobs are deliberately sequential within a run: on 8 GB RAM, scraping while the
+LLM is scoring is how you get a swap storm.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+
+from jobhunter import CONFIG
+
+log = logging.getLogger(__name__)
+
+_S = CONFIG.get("scheduler") or {}
+SCRAPE_HOUR = int(_S.get("scrape_hour", 8))
+REPLY_POLL_MINUTES = int(_S.get("reply_poll_minutes", 60))
+SCORE_BATCH = int(_S.get("score_batch", 120))
+
+_scheduler: BackgroundScheduler | None = None
+_last_runs: dict[str, dict] = {}
+
+
+def _record(name: str, result: object, error: str | None = None) -> None:
+    _last_runs[name] = {
+        "at": datetime.now().isoformat(timespec="seconds"),
+        "result": result if error is None else None,
+        "error": error,
+    }
+
+
+def daily_cycle() -> dict:
+    """Scrape -> salary backfill -> embed -> score -> notify. The whole ingestion loop."""
+    from jobhunter import matcher, notify, pipeline
+
+    summary: dict = {}
+    try:
+        summary["scrape"] = pipeline.scrape().as_dict()
+        summary["salaries"] = pipeline.extract_salaries(limit=40)
+        summary["embedded"] = matcher.prefilter(limit=2000)
+        summary["scored"] = matcher.score_pending(limit=SCORE_BATCH)
+        summary["notified"] = notify.notify_high_matches()
+        _record("daily_cycle", summary)
+    except Exception as e:  # noqa: BLE001 — a failed run must not kill the scheduler thread
+        log.exception("daily cycle failed")
+        _record("daily_cycle", summary, str(e)[:300])
+        summary["error"] = str(e)[:300]
+    return summary
+
+
+def reply_cycle() -> dict:
+    """Poll Gmail, classify replies, queue follow-ups, notify."""
+    from jobhunter import notify
+    from jobhunter.outreach import drafter, tracker
+
+    summary: dict = {}
+    try:
+        summary["poll"] = tracker.poll()
+        summary["followups"] = len([r for r in drafter.queue_followups() if not r.get("error")])
+        summary["notified"] = notify.notify_replies()
+        _record("reply_cycle", summary)
+    except Exception as e:  # noqa: BLE001
+        log.exception("reply cycle failed")
+        _record("reply_cycle", summary, str(e)[:300])
+        summary["error"] = str(e)[:300]
+    return summary
+
+
+def start() -> BackgroundScheduler:
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        return _scheduler
+
+    # No explicit timezone: tzlocal resolves the real IANA zone. Passing
+    # str(tzinfo) yields an abbreviation like "IST", which zoneinfo rejects.
+    _scheduler = BackgroundScheduler(
+        job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 3600},
+    )
+    _scheduler.add_job(
+        daily_cycle, CronTrigger(hour=SCRAPE_HOUR, minute=0), id="daily_cycle", name="Daily scrape + score"
+    )
+    _scheduler.add_job(
+        reply_cycle,
+        IntervalTrigger(minutes=REPLY_POLL_MINUTES),
+        id="reply_cycle",
+        name="Poll Gmail for replies",
+    )
+    _scheduler.start()
+    log.info("scheduler started: scrape daily at %02d:00, replies every %dm", SCRAPE_HOUR, REPLY_POLL_MINUTES)
+    return _scheduler
+
+
+def stop() -> None:
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown(wait=False)
+        log.info("scheduler stopped")
+    _scheduler = None
+
+
+def status() -> dict:
+    if not _scheduler or not _scheduler.running:
+        return {"running": False, "jobs": [], "last_runs": _last_runs}
+    return {
+        "running": True,
+        "jobs": [
+            {
+                "id": j.id,
+                "name": j.name,
+                "next_run": j.next_run_time.isoformat(timespec="seconds") if j.next_run_time else None,
+            }
+            for j in _scheduler.get_jobs()
+        ],
+        "last_runs": _last_runs,
+    }

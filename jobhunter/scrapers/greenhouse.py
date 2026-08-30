@@ -1,0 +1,56 @@
+"""Greenhouse public job-board API — boards-api.greenhouse.io/v1/boards/{slug}/jobs"""
+
+from __future__ import annotations
+
+import html
+import logging
+
+import httpx
+
+from jobhunter.scrapers.base import RawJob, gather_limited, get_json, html_to_text, looks_remote, parse_ts
+
+log = logging.getLogger(__name__)
+
+SOURCE = "greenhouse"
+API = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
+
+
+async def fetch_board(http: httpx.AsyncClient, slug: str, company_name: str | None = None) -> list[RawJob]:
+    data = await get_json(http, API.format(slug=slug))
+    if not isinstance(data, dict):
+        return []
+    name = company_name or slug
+    out: list[RawJob] = []
+    for j in data.get("jobs") or []:
+        url = j.get("absolute_url")
+        title = j.get("title")
+        if not url or not title:
+            continue
+        location = (j.get("location") or {}).get("name")
+        # Greenhouse double-escapes the content field
+        desc = html_to_text(html.unescape(j.get("content") or ""))
+        offices = ", ".join(o.get("name", "") for o in (j.get("offices") or []) if o.get("name"))
+        out.append(
+            RawJob(
+                company_name=name,
+                title=title,
+                url=url,
+                source=SOURCE,
+                location=location or offices or None,
+                remote=looks_remote(location, offices, title),
+                description=desc,
+                posted_at=parse_ts(j.get("first_published") or j.get("updated_at")),
+                ats="greenhouse",
+                ats_slug=slug,
+            )
+        )
+    return out
+
+
+async def fetch(http: httpx.AsyncClient, companies: list[dict]) -> list[RawJob]:
+    """`companies` are entries from companies.yaml with ats == 'greenhouse'."""
+    targets = [c for c in companies if c.get("ats") == "greenhouse" and c.get("ats_slug")]
+    results = await gather_limited([fetch_board(http, c["ats_slug"], c.get("name")) for c in targets])
+    jobs = [j for r in results if r for j in r]
+    log.info("greenhouse: %d jobs from %d boards", len(jobs), len(targets))
+    return jobs

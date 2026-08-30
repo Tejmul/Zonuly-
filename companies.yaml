@@ -1,0 +1,571 @@
+# Seed list of target companies with verified public job boards.
+#
+# Every entry here was probed live — `ats_slug` is the real board token, not a guess.
+# `python scripts/run.py discover` re-probes these and appends newly-found YC companies.
+#
+# fields: name, website, domain (for email pattern guessing), ats, ats_slug, tags
+companies:
+  - name: "Databricks"
+    website: "https://databricks.com"
+    domain: "databricks.com"
+    ats: greenhouse
+    ats_slug: "databricks"
+    tags: [ai]   # ~807 open roles at seed time
+  - name: "OpenAI"
+    website: "https://openai.com"
+    domain: "openai.com"
+    ats: ashby
+    ats_slug: "openai"
+    tags: [ai]   # ~749 open roles at seed time
+  - name: "Stripe"
+    website: "https://stripe.com"
+    domain: "stripe.com"
+    ats: greenhouse
+    ats_slug: "stripe"
+    tags: [global]   # ~542 open roles at seed time
+  - name: "Datadog"
+    website: "https://datadoghq.com"
+    domain: "datadoghq.com"
+    ats: greenhouse
+    ats_slug: "datadog"
+    tags: [global]   # ~424 open roles at seed time
+  - name: "Snowflake"
+    website: "https://snowflake.com"
+    domain: "snowflake.com"
+    ats: ashby
+    ats_slug: "snowflake"
+    tags: [global]   # ~410 open roles at seed time
+  - name: "Anthropic"
+    website: "https://anthropic.com"
+    domain: "anthropic.com"
+    ats: greenhouse
+    ats_slug: "anthropic"
+    tags: [ai]   # ~400 open roles at seed time
+  - name: "MongoDB"
+    website: "https://mongodb.com"
+    domain: "mongodb.com"
+    ats: greenhouse
+    ats_slug: "mongodb"
+    tags: [global]   # ~394 open roles at seed time
+  - name: "Harvey"
+    website: "https://harvey.ai"
+    domain: "harvey.ai"
+    ats: ashby
+    ats_slug: "harvey"
+    tags: [ai]   # ~350 open roles at seed time
+  - name: "Samsara"
+    website: "https://samsara.com"
+    domain: "samsara.com"
+    ats: greenhouse
+    ats_slug: "samsara"
+    tags: [global]   # ~310 open roles at seed time
+  - name: "Brex"
+    website: "https://brex.com"
+    domain: "brex.com"
+    ats: greenhouse
+    ats_slug: "brex"
+    tags: [global]   # ~292 open roles at seed time
+  - name: "Cloudflare"
+    website: "https://cloudflare.com"
+    domain: "cloudflare.com"
+    ats: greenhouse
+    ats_slug: "cloudflare"
+    tags: [global]   # ~283 open roles at seed time
+  - name: "Elastic"
+    website: "https://elastic.co"
+    domain: "elastic.co"
+    ats: greenhouse
+    ats_slug: "elastic"
+    tags: [global]   # ~225 open roles at seed time
+  - name: "ElevenLabs"
+    website: "https://elevenlabs.io"
+    domain: "elevenlabs.io"
+    ats: ashby
+    ats_slug: "elevenlabs"
+    tags: [ai]   # ~220 open roles at seed time
+  - name: "Scale AI"
+    website: "https://scale.com"
+    domain: "scale.com"
+    ats: greenhouse
+    ats_slug: "scaleai"
+    tags: [ai]   # ~210 open roles at seed time
+  - name: "Reddit"
+    website: "https://reddit.com"
+    domain: "reddit.com"
+    ats: greenhouse
+    ats_slug: "reddit"
+    tags: [global]   # ~191 open roles at seed time
+  - name: "GitLab"
+    website: "https://gitlab.com"
+    domain: "gitlab.com"
+    ats: greenhouse
+    ats_slug: "gitlab"
+    tags: [global]   # ~185 open roles at seed time
+  - name: "Affirm"
+    website: "https://affirm.com"
+    domain: "affirm.com"
+    ats: greenhouse
+    ats_slug: "affirm"
+    tags: [global]   # ~180 open roles at seed time
+  - name: "Figma"
+    website: "https://figma.com"
+    domain: "figma.com"
+    ats: greenhouse
+    ats_slug: "figma"
+    tags: [global]   # ~179 open roles at seed time
+  - name: "Sierra"
+    website: "https://sierra.ai"
+    domain: "sierra.ai"
+    ats: ashby
+    ats_slug: "sierra"
+    tags: [ai]   # ~173 open roles at seed time
+  - name: "Lyft"
+    website: "https://lyft.com"
+    domain: "lyft.com"
+    ats: greenhouse
+    ats_slug: "lyft"
+    tags: [global]   # ~162 open roles at seed time
+  - name: "Coinbase"
+    website: "https://coinbase.com"
+    domain: "coinbase.com"
+    ats: greenhouse
+    ats_slug: "coinbase"
+    tags: [global]   # ~160 open roles at seed time
+  - name: "Grafana Labs"
+    website: "https://grafana.com"
+    domain: "grafana.com"
+    ats: greenhouse
+    ats_slug: "grafanalabs"
+    tags: [global]   # ~140 open roles at seed time
+  - name: "Cohere"
+    website: "https://cohere.com"
+    domain: "cohere.com"
+    ats: ashby
+    ats_slug: "cohere"
+    tags: [ai]   # ~139 open roles at seed time
+  - name: "Robinhood"
+    website: "https://robinhood.com"
+    domain: "robinhood.com"
+    ats: greenhouse
+    ats_slug: "robinhood"
+    tags: [global]   # ~130 open roles at seed time
+  - name: "Ramp"
+    website: "https://ramp.com"
+    domain: "ramp.com"
+    ats: ashby
+    ats_slug: "ramp"
+    tags: [global]   # ~126 open roles at seed time
+  - name: "Instacart"
+    website: "https://instacart.com"
+    domain: "instacart.com"
+    ats: greenhouse
+    ats_slug: "instacart"
+    tags: [global]   # ~122 open roles at seed time
+  - name: "Cursor"
+    website: "https://cursor.com"
+    domain: "cursor.com"
+    ats: ashby
+    ats_slug: "cursor"
+    tags: [ai]   # ~119 open roles at seed time
+  - name: "Plaid"
+    website: "https://plaid.com"
+    domain: "plaid.com"
+    ats: ashby
+    ats_slug: "plaid"
+    tags: [global]   # ~117 open roles at seed time
+  - name: "Notion"
+    website: "https://notion.so"
+    domain: "notion.so"
+    ats: ashby
+    ats_slug: "notion"
+    tags: [global]   # ~112 open roles at seed time
+  - name: "Postman"
+    website: "https://postman.com"
+    domain: "postman.com"
+    ats: greenhouse
+    ats_slug: "postman"
+    tags: [india]   # ~107 open roles at seed time
+  - name: "Rubrik"
+    website: "https://rubrik.com"
+    domain: "rubrik.com"
+    ats: greenhouse
+    ats_slug: "rubrik"
+    tags: [india]   # ~107 open roles at seed time
+  - name: "Cresta"
+    website: "https://cresta.com"
+    domain: "cresta.com"
+    ats: greenhouse
+    ats_slug: "cresta"
+    tags: [ai]   # ~98 open roles at seed time
+  - name: "LangChain"
+    website: "https://langchain.com"
+    domain: "langchain.com"
+    ats: ashby
+    ats_slug: "langchain"
+    tags: [ai]   # ~93 open roles at seed time
+  - name: "Perplexity"
+    website: "https://perplexity.ai"
+    domain: "perplexity.ai"
+    ats: ashby
+    ats_slug: "perplexity"
+    tags: [ai]   # ~86 open roles at seed time
+  - name: "Gusto"
+    website: "https://gusto.com"
+    domain: "gusto.com"
+    ats: greenhouse
+    ats_slug: "gusto"
+    tags: [global]   # ~83 open roles at seed time
+  - name: "Vercel"
+    website: "https://vercel.com"
+    domain: "vercel.com"
+    ats: greenhouse
+    ats_slug: "vercel"
+    tags: [global]   # ~80 open roles at seed time
+  - name: "Deepgram"
+    website: "https://deepgram.com"
+    domain: "deepgram.com"
+    ats: ashby
+    ats_slug: "deepgram"
+    tags: [ai]   # ~77 open roles at seed time
+  - name: "Synthesia"
+    website: "https://synthesia.io"
+    domain: "synthesia.io"
+    ats: ashby
+    ats_slug: "synthesia"
+    tags: [ai]   # ~76 open roles at seed time
+  - name: "Sigma Computing"
+    website: "https://sigmacomputing.com"
+    domain: "sigmacomputing.com"
+    ats: greenhouse
+    ats_slug: "sigmacomputing"
+    tags: [global]   # ~72 open roles at seed time
+  - name: "InMobi"
+    website: "https://inmobi.com"
+    domain: "inmobi.com"
+    ats: greenhouse
+    ats_slug: "inmobi"
+    tags: [india]   # ~70 open roles at seed time
+  - name: "PhonePe"
+    website: "https://phonepe.com"
+    domain: "phonepe.com"
+    ats: greenhouse
+    ats_slug: "phonepe"
+    tags: [india]   # ~68 open roles at seed time
+  - name: "Chainguard"
+    website: "https://chainguard.dev"
+    domain: "chainguard.dev"
+    ats: greenhouse
+    ats_slug: "chainguard"
+    tags: [global]   # ~67 open roles at seed time
+  - name: "Twitch"
+    website: "https://twitch.tv"
+    domain: "twitch.tv"
+    ats: greenhouse
+    ats_slug: "twitch"
+    tags: [global]   # ~65 open roles at seed time
+  - name: "Suno"
+    website: "https://suno.com"
+    domain: "suno.com"
+    ats: ashby
+    ats_slug: "suno"
+    tags: [ai]   # ~63 open roles at seed time
+  - name: "Sarvam AI"
+    website: "https://sarvam.ai"
+    domain: "sarvam.ai"
+    ats: ashby
+    ats_slug: "sarvam"
+    tags: [ai, india]   # ~63 open roles at seed time
+  - name: "Baseten"
+    website: "https://baseten.co"
+    domain: "baseten.co"
+    ats: ashby
+    ats_slug: "baseten"
+    tags: [ai]   # ~61 open roles at seed time
+  - name: "Together AI"
+    website: "https://together.ai"
+    domain: "together.ai"
+    ats: greenhouse
+    ats_slug: "togetherai"
+    tags: [ai]   # ~58 open roles at seed time
+  - name: "Temporal"
+    website: "https://temporal.io"
+    domain: "temporal.io"
+    ats: ashby
+    ats_slug: "temporal"
+    tags: [global]   # ~58 open roles at seed time
+  - name: "Supabase"
+    website: "https://supabase.com"
+    domain: "supabase.com"
+    ats: ashby
+    ats_slug: "supabase"
+    tags: [global]   # ~55 open roles at seed time
+  - name: "Luma AI"
+    website: "https://lumalabs.ai"
+    domain: "lumalabs.ai"
+    ats: ashby
+    ats_slug: "lumaai"
+    tags: [ai]   # ~51 open roles at seed time
+  - name: "Benchling"
+    website: "https://benchling.com"
+    domain: "benchling.com"
+    ats: ashby
+    ats_slug: "benchling"
+    tags: [global]   # ~51 open roles at seed time
+  - name: "Tailscale"
+    website: "https://tailscale.com"
+    domain: "tailscale.com"
+    ats: greenhouse
+    ats_slug: "tailscale"
+    tags: [global]   # ~51 open roles at seed time
+  - name: "Meesho"
+    website: "https://meesho.com"
+    domain: "meesho.com"
+    ats: lever
+    ats_slug: "meesho"
+    tags: [india]   # ~49 open roles at seed time
+  - name: "Slice"
+    website: "https://sliceit.com"
+    domain: "sliceit.com"
+    ats: greenhouse
+    ats_slug: "slice"
+    tags: [india]   # ~49 open roles at seed time
+  - name: "Fireworks AI"
+    website: "https://fireworks.ai"
+    domain: "fireworks.ai"
+    ats: greenhouse
+    ats_slug: "fireworksai"
+    tags: [ai]   # ~48 open roles at seed time
+  - name: "Sentry"
+    website: "https://sentry.io"
+    domain: "sentry.io"
+    ats: ashby
+    ats_slug: "sentry"
+    tags: [global]   # ~47 open roles at seed time
+  - name: "Abridge"
+    website: "https://abridge.com"
+    domain: "abridge.com"
+    ats: ashby
+    ats_slug: "abridge"
+    tags: [ai]   # ~43 open roles at seed time
+  - name: "Discord"
+    website: "https://discord.com"
+    domain: "discord.com"
+    ats: greenhouse
+    ats_slug: "discord"
+    tags: [global]   # ~43 open roles at seed time
+  - name: "Devrev"
+    website: "https://devrev.ai"
+    domain: "devrev.ai"
+    ats: greenhouse
+    ats_slug: "devrev"
+    tags: [india]   # ~42 open roles at seed time
+  - name: "Airtable"
+    website: "https://airtable.com"
+    domain: "airtable.com"
+    ats: greenhouse
+    ats_slug: "airtable"
+    tags: [global]   # ~41 open roles at seed time
+  - name: "Render"
+    website: "https://render.com"
+    domain: "render.com"
+    ats: ashby
+    ats_slug: "render"
+    tags: [global]   # ~34 open roles at seed time
+  - name: "Confluent"
+    website: "https://confluent.io"
+    domain: "confluent.io"
+    ats: ashby
+    ats_slug: "confluent"
+    tags: [global]   # ~33 open roles at seed time
+  - name: "Modal"
+    website: "https://modal.com"
+    domain: "modal.com"
+    ats: ashby
+    ats_slug: "modal"
+    tags: [ai]   # ~31 open roles at seed time
+  - name: "Dropbox"
+    website: "https://dropbox.com"
+    domain: "dropbox.com"
+    ats: greenhouse
+    ats_slug: "dropbox"
+    tags: [global]   # ~30 open roles at seed time
+  - name: "Turing"
+    website: "https://turing.com"
+    domain: "turing.com"
+    ats: greenhouse
+    ats_slug: "turing"
+    tags: [india]   # ~27 open roles at seed time
+  - name: "Druva"
+    website: "https://druva.com"
+    domain: "druva.com"
+    ats: greenhouse
+    ats_slug: "druva"
+    tags: [india]   # ~27 open roles at seed time
+  - name: "Netradyne"
+    website: "https://netradyne.com"
+    domain: "netradyne.com"
+    ats: greenhouse
+    ats_slug: "netradyne"
+    tags: [india]   # ~27 open roles at seed time
+  - name: "Braintrust"
+    website: "https://braintrust.dev"
+    domain: "braintrust.dev"
+    ats: ashby
+    ats_slug: "braintrust"
+    tags: [ai]   # ~24 open roles at seed time
+  - name: "WorkOS"
+    website: "https://workos.com"
+    domain: "workos.com"
+    ats: ashby
+    ats_slug: "workos"
+    tags: [global]   # ~24 open roles at seed time
+  - name: "Linear"
+    website: "https://linear.app"
+    domain: "linear.app"
+    ats: ashby
+    ats_slug: "linear"
+    tags: [global]   # ~23 open roles at seed time
+  - name: "Toptal"
+    website: "https://toptal.com"
+    domain: "toptal.com"
+    ats: lever
+    ats_slug: "toptal"
+    tags: [global]   # ~22 open roles at seed time
+  - name: "Andela"
+    website: "https://andela.com"
+    domain: "andela.com"
+    ats: ashby
+    ats_slug: "andela"
+    tags: [global]   # ~18 open roles at seed time
+  - name: "Observe.AI"
+    website: "https://observe.ai"
+    domain: "observe.ai"
+    ats: greenhouse
+    ats_slug: "observeai"
+    tags: [ai, india]   # ~18 open roles at seed time
+  - name: "Poolside"
+    website: "https://poolside.ai"
+    domain: "poolside.ai"
+    ats: ashby
+    ats_slug: "poolside"
+    tags: [ai]   # ~16 open roles at seed time
+  - name: "LlamaIndex"
+    website: "https://llamaindex.ai"
+    domain: "llamaindex.ai"
+    ats: ashby
+    ats_slug: "llamaindex"
+    tags: [ai]   # ~15 open roles at seed time
+  - name: "SigNoz"
+    website: "https://signoz.io"
+    domain: "signoz.io"
+    ats: ashby
+    ats_slug: "signoz"
+    tags: [india]   # ~15 open roles at seed time
+  - name: "Neon"
+    website: "https://neon.tech"
+    domain: "neon.tech"
+    ats: lever
+    ats_slug: "neon"
+    tags: [global]   # ~14 open roles at seed time
+  - name: "Zapier"
+    website: "https://zapier.com"
+    domain: "zapier.com"
+    ats: ashby
+    ats_slug: "zapier"
+    tags: [global]   # ~14 open roles at seed time
+  - name: "Airbyte"
+    website: "https://airbyte.com"
+    domain: "airbyte.com"
+    ats: ashby
+    ats_slug: "airbyte"
+    tags: [global]   # ~11 open roles at seed time
+  - name: "Groww"
+    website: "https://groww.in"
+    domain: "groww.in"
+    ats: greenhouse
+    ats_slug: "groww"
+    tags: [india]   # ~11 open roles at seed time
+  - name: "Resend"
+    website: "https://resend.com"
+    domain: "resend.com"
+    ats: ashby
+    ats_slug: "resend"
+    tags: [global]   # ~10 open roles at seed time
+  - name: "AssemblyAI"
+    website: "https://assemblyai.com"
+    domain: "assemblyai.com"
+    ats: greenhouse
+    ats_slug: "assemblyai"
+    tags: [ai]   # ~9 open roles at seed time
+  - name: "PlanetScale"
+    website: "https://planetscale.com"
+    domain: "planetscale.com"
+    ats: greenhouse
+    ats_slug: "planetscale"
+    tags: [global]   # ~9 open roles at seed time
+  - name: "Railway"
+    website: "https://railway.app"
+    domain: "railway.app"
+    ats: ashby
+    ats_slug: "railway"
+    tags: [global]   # ~8 open roles at seed time
+  - name: "Navi"
+    website: "https://navi.com"
+    domain: "navi.com"
+    ats: ashby
+    ats_slug: "navi"
+    tags: [india]   # ~7 open roles at seed time
+  - name: "Pinecone"
+    website: "https://pinecone.io"
+    domain: "pinecone.io"
+    ats: ashby
+    ats_slug: "pinecone"
+    tags: [ai]   # ~6 open roles at seed time
+  - name: "Skyflow"
+    website: "https://skyflow.com"
+    domain: "skyflow.com"
+    ats: ashby
+    ats_slug: "skyflow"
+    tags: [india]   # ~6 open roles at seed time
+  - name: "Netlify"
+    website: "https://netlify.com"
+    domain: "netlify.com"
+    ats: greenhouse
+    ats_slug: "netlify"
+    tags: [global]   # ~5 open roles at seed time
+  - name: "Atlan"
+    website: "https://atlan.com"
+    domain: "atlan.com"
+    ats: ashby
+    ats_slug: "atlan"
+    tags: [india]   # ~5 open roles at seed time
+  - name: "Runway"
+    website: "https://runwayml.com"
+    domain: "runwayml.com"
+    ats: ashby
+    ats_slug: "runway"
+    tags: [ai]   # ~4 open roles at seed time
+  - name: "Doppler"
+    website: "https://doppler.com"
+    domain: "doppler.com"
+    ats: ashby
+    ats_slug: "doppler"
+    tags: [global]   # ~3 open roles at seed time
+  - name: "CRED"
+    website: "https://cred.club"
+    domain: "cred.club"
+    ats: lever
+    ats_slug: "cred"
+    tags: [india]   # ~3 open roles at seed time
+  - name: "Weaviate"
+    website: "https://weaviate.io"
+    domain: "weaviate.io"
+    ats: ashby
+    ats_slug: "weaviate"
+    tags: [ai]   # ~2 open roles at seed time
+  - name: "Vellum"
+    website: "https://vellum.ai"
+    domain: "vellum.ai"
+    ats: ashby
+    ats_slug: "vellum"
+    tags: [ai]   # ~1 open roles at seed time

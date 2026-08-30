@@ -1,0 +1,98 @@
+"""Y Combinator company feed -> ATS discovery -> jobs.
+
+Work at a Startup's job API needs a login, so instead we take the public YC
+company directory (the yc-oss open mirror), keep the ones that are hiring in our
+space, discover which public ATS board each uses, and scrape that. Discovered
+boards are cached on the Company row so later runs skip the probing entirely.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import httpx
+
+from jobhunter import CONFIG
+from jobhunter.scrapers import ashby, greenhouse, lever
+from jobhunter.scrapers.base import RawJob, gather_limited, get_json
+from jobhunter.scrapers.discover import find_ats
+
+log = logging.getLogger(__name__)
+
+SOURCE = "yc"
+DIRECTORY = "https://yc-oss.github.io/api/companies/all.json"
+PROBE_LIMIT = int((CONFIG.get("sources") or {}).get("yc_probe_limit", 60))
+
+INTERESTING = {
+    "artificial-intelligence", "ai", "machine-learning", "ai-assistant", "aiops",
+    "generative-ai", "ml", "nlp", "developer-tools", "infrastructure", "saas",
+    "data-engineering", "analytics", "api", "devsecops", "open-source",
+}
+
+_FETCHERS = {"greenhouse": greenhouse.fetch_board, "lever": lever.fetch_board, "ashby": ashby.fetch_board}
+
+
+def _interesting(c: dict) -> bool:
+    if not c.get("isHiring"):
+        return False
+    if (c.get("status") or "").lower() == "inactive":
+        return False
+    tags = {str(t).lower().replace(" ", "-") for t in (c.get("tags") or [])}
+    industry = (c.get("industry") or "").lower()
+    return bool(tags & INTERESTING) or "engineering" in industry or "b2b" in industry
+
+
+async def discover_companies(http: httpx.AsyncClient, limit: int = PROBE_LIMIT) -> list[dict]:
+    """Return [{name, website, ats, ats_slug}] for YC companies with a live public board."""
+    data = await get_json(http, DIRECTORY)
+    if not isinstance(data, list):
+        log.warning("yc: company directory unavailable")
+        return []
+
+    cands = [c for c in data if isinstance(c, dict) and _interesting(c)]
+    # newest batches first — they hire the most aggressively and pay in equity+cash
+    cands.sort(key=lambda c: str(c.get("batch") or ""), reverse=True)
+    cands = cands[:limit]
+    log.info("yc: probing %d of %d hiring companies for public ATS boards", len(cands), len(data))
+
+    hits = await gather_limited(
+        [find_ats(http, c.get("name") or "", c.get("website")) for c in cands], limit=4
+    )
+    out: list[dict] = []
+    for c, hit in zip(cands, hits):
+        if not hit:
+            continue
+        ats, slug, count = hit
+        out.append(
+            {
+                "name": c.get("name"),
+                "website": c.get("website"),
+                "ats": ats,
+                "ats_slug": slug,
+                "job_count": count,
+                "tags": c.get("tags") or [],
+                "batch": c.get("batch"),
+                "discovered": True,
+            }
+        )
+    log.info("yc: %d companies with live boards", len(out))
+    return out
+
+
+async def fetch(http: httpx.AsyncClient, companies: list[dict] | None = None) -> list[RawJob]:
+    """Scrape jobs from YC companies. `companies` (from companies.yaml) are skipped as duplicates."""
+    known = {(c.get("ats"), c.get("ats_slug")) for c in (companies or [])}
+    found = await discover_companies(http)
+    fresh = [c for c in found if (c["ats"], c["ats_slug"]) not in known]
+
+    results = await gather_limited(
+        [_FETCHERS[c["ats"]](http, c["ats_slug"], c["name"]) for c in fresh], limit=6
+    )
+    jobs: list[RawJob] = []
+    for c, r in zip(fresh, results):
+        for j in r or []:
+            j.source = SOURCE  # attribute to YC discovery, not the underlying ATS
+            j.company_website = j.company_website or c.get("website")
+            jobs.append(j)
+    log.info("yc: %d jobs from %d newly-discovered boards", len(jobs), len(fresh))
+    return jobs

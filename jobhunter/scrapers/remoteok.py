@@ -1,0 +1,70 @@
+"""RemoteOK public API — remote roles, many with explicit salary bands."""
+
+from __future__ import annotations
+
+import logging
+
+import httpx
+
+from jobhunter.scrapers.base import RawJob, get_json, html_to_text, parse_ts
+
+log = logging.getLogger(__name__)
+
+SOURCE = "remoteok"
+API = "https://remoteok.com/api"
+
+# RemoteOK carries a lot of crypto/marketing noise; keep the engineering slice.
+KEEP_TAGS = {
+    "dev", "engineer", "engineering", "backend", "back end", "full stack", "fullstack",
+    "python", "machine learning", "ml", "ai", "artificial intelligence", "data", "data science",
+    "nlp", "llm", "deep learning", "software", "javascript", "typescript", "node", "react",
+    "golang", "rust", "java", "cloud", "devops", "sre", "infrastructure",
+}
+KEEP_TITLE = ("engineer", "developer", "sde", "scientist", "architect", "programmer", "ml", "ai ")
+
+
+def _salary(j: dict) -> str | None:
+    lo, hi = j.get("salary_min"), j.get("salary_max")
+    if lo or hi:
+        return f"USD {lo or ''}-{hi or ''}".strip()
+    return None
+
+
+async def fetch(http: httpx.AsyncClient, companies: list[dict] | None = None) -> list[RawJob]:
+    data = await get_json(http, API)
+    if not isinstance(data, list):
+        log.warning("remoteok: no data")
+        return []
+
+    out: list[RawJob] = []
+    for j in data:
+        if not isinstance(j, dict) or not j.get("id"):
+            continue  # first element is the API legal notice
+        title = (j.get("position") or "").strip()
+        company = (j.get("company") or "").strip()
+        url = j.get("url") or j.get("apply_url")
+        if not (title and company and url):
+            continue
+
+        tags = {str(t).lower() for t in (j.get("tags") or [])}
+        title_l = title.lower()
+        if not (tags & KEEP_TAGS or any(k in title_l for k in KEEP_TITLE)):
+            continue
+
+        out.append(
+            RawJob(
+                company_name=company,
+                title=title,
+                url=url,
+                source=SOURCE,
+                location=j.get("location") or "Remote",
+                remote=True,
+                description=html_to_text(j.get("description")),
+                posted_at=parse_ts(j.get("epoch") or j.get("date")),
+                salary_raw=_salary(j),
+                company_website=j.get("company_url") or None,
+                extra={"tags": sorted(tags)},
+            )
+        )
+    log.info("remoteok: %d engineering jobs", len(out))
+    return out

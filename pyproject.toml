@@ -1,0 +1,31 @@
+[project]
+name = "jobhunter"
+version = "0.1.0"
+description = "AI job-scraping & referral outreach agent"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.27",
+    "sqlmodel>=0.0.21",
+    "pyyaml>=6.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "apscheduler>=3.10",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "feedparser>=6.0",
+    "google-api-python-client>=2.140",
+    "google-auth-oauthlib>=1.2",
+    "pypdf>=4.3",
+    "dnspython>=2.6",
+    "python-dateutil>=2.9",
+    "typer>=0.12",
+    "playwright>=1.46",
+    "numpy>=1.26",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobhunter"]

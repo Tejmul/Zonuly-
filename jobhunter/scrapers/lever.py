@@ -1,0 +1,68 @@
+"""Lever public postings API — api.lever.co/v0/postings/{slug}?mode=json"""
+
+from __future__ import annotations
+
+import logging
+
+import httpx
+
+from jobhunter.scrapers.base import RawJob, gather_limited, get_json, html_to_text, looks_remote, parse_ts
+
+log = logging.getLogger(__name__)
+
+SOURCE = "lever"
+API = "https://api.lever.co/v0/postings/{slug}?mode=json"
+
+
+def _salary(posting: dict) -> str | None:
+    sr = posting.get("salaryRange") or {}
+    lo, hi, cur = sr.get("min"), sr.get("max"), sr.get("currency") or ""
+    if lo or hi:
+        return f"{cur} {lo or ''}-{hi or ''}".strip()
+    return None
+
+
+async def fetch_board(http: httpx.AsyncClient, slug: str, company_name: str | None = None) -> list[RawJob]:
+    data = await get_json(http, API.format(slug=slug))
+    if not isinstance(data, list):
+        return []
+    name = company_name or slug
+    out: list[RawJob] = []
+    for j in data:
+        url = j.get("hostedUrl") or j.get("applyUrl")
+        title = j.get("text")
+        if not url or not title:
+            continue
+        cats = j.get("categories") or {}
+        location = cats.get("location")
+        # descriptionPlain is the intro; `lists` + additional hold the real requirements
+        parts = [j.get("descriptionPlain") or html_to_text(j.get("description"))]
+        for lst in j.get("lists") or []:
+            parts.append(f"\n{lst.get('text', '')}\n{html_to_text(lst.get('content'))}")
+        parts.append(j.get("additionalPlain") or html_to_text(j.get("additional")))
+        desc = "\n".join(p for p in parts if p)[:12000]
+        wp = cats.get("workplaceType") or ""
+        out.append(
+            RawJob(
+                company_name=name,
+                title=title,
+                url=url,
+                source=SOURCE,
+                location=location,
+                remote=looks_remote(location, wp, title),
+                description=desc,
+                posted_at=parse_ts(j.get("createdAt")),
+                salary_raw=_salary(j),
+                ats="lever",
+                ats_slug=slug,
+            )
+        )
+    return out
+
+
+async def fetch(http: httpx.AsyncClient, companies: list[dict]) -> list[RawJob]:
+    targets = [c for c in companies if c.get("ats") == "lever" and c.get("ats_slug")]
+    results = await gather_limited([fetch_board(http, c["ats_slug"], c.get("name")) for c in targets])
+    jobs = [j for r in results if r for j in r]
+    log.info("lever: %d jobs from %d boards", len(jobs), len(targets))
+    return jobs

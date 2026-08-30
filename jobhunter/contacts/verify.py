@@ -1,0 +1,130 @@
+"""Email verification: MX lookup + SMTP RCPT probe. Never sends mail.
+
+Important caveat, surfaced in the dashboard rather than hidden: many residential
+ISPs block outbound port 25, and most large providers (Google Workspace,
+Microsoft 365) accept every RCPT and bounce later. So a "valid" here means
+"the domain accepts mail and did not reject this mailbox" — useful signal,
+not proof. Anything unproven stays labelled `pattern-guessed`.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import smtplib
+import socket
+from dataclasses import dataclass
+from functools import lru_cache
+
+from jobhunter import CONFIG
+
+log = logging.getLogger(__name__)
+
+ENABLED = bool((CONFIG.get("contacts") or {}).get("smtp_verify", True))
+HELO_HOST = (CONFIG.get("contacts") or {}).get("smtp_helo_host", "localhost")
+MAIL_FROM = (CONFIG.get("contacts") or {}).get("smtp_mail_from", "verify@example.com")
+TIMEOUT = 8
+
+_SYNTAX = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+# providers that accept-all at the edge — an RCPT 250 from these proves nothing
+CATCH_ALL_MX = ("google.com", "googlemail.com", "outlook.com", "protection.outlook.com", "pphosted.com")
+
+
+@dataclass
+class Verdict:
+    email: str
+    syntax_ok: bool = False
+    mx_ok: bool = False
+    smtp_ok: bool | None = None    # None = could not determine
+    reason: str = ""
+
+    @property
+    def confidence(self) -> str:
+        if self.smtp_ok is True:
+            return "verified"
+        if not self.syntax_ok or not self.mx_ok or self.smtp_ok is False:
+            return "invalid"
+        return "pattern-guessed"
+
+
+@lru_cache(maxsize=512)
+def mx_hosts(domain: str) -> tuple[str, ...]:
+    try:
+        import dns.resolver
+
+        answers = dns.resolver.resolve(domain, "MX", lifetime=6)
+        hosts = sorted(((r.preference, str(r.exchange).rstrip(".")) for r in answers), key=lambda t: t[0])
+        return tuple(h for _, h in hosts)
+    except Exception as e:  # noqa: BLE001 — NXDOMAIN, timeouts, no MX record
+        log.debug("MX lookup failed for %s: %s", domain, e)
+        return ()
+
+
+def verify(email: str, *, smtp: bool | None = None) -> Verdict:
+    v = Verdict(email=email)
+    if not email or not _SYNTAX.match(email):
+        v.reason = "bad syntax"
+        return v
+    v.syntax_ok = True
+
+    domain = email.split("@")[-1].lower()
+    hosts = mx_hosts(domain)
+    if not hosts:
+        v.reason = "domain accepts no mail (no MX)"
+        return v
+    v.mx_ok = True
+
+    do_smtp = ENABLED if smtp is None else smtp
+    if not do_smtp:
+        v.reason = "MX ok; SMTP probe disabled"
+        return v
+
+    if any(any(c in h.lower() for c in CATCH_ALL_MX) for h in hosts[:1]):
+        v.reason = "MX ok; provider accepts all recipients, RCPT proves nothing"
+        return v
+
+    v.smtp_ok, v.reason = _rcpt_probe(hosts[0], email)
+    return v
+
+
+def _rcpt_probe(host: str, email: str) -> tuple[bool | None, str]:
+    """RCPT TO check — asks the server whether the mailbox exists, then quits."""
+    try:
+        server = smtplib.SMTP(timeout=TIMEOUT)
+        server.connect(host, 25)
+        server.helo(HELO_HOST)
+        server.mail(MAIL_FROM)
+        code, msg = server.rcpt(email)
+        try:
+            server.quit()
+        except Exception:  # noqa: BLE001 — server may drop the connection first
+            pass
+    except (socket.timeout, TimeoutError):
+        return None, "SMTP timed out (port 25 is often blocked on home connections)"
+    except (smtplib.SMTPConnectError, ConnectionRefusedError, OSError) as e:
+        return None, f"could not connect to {host}: {type(e).__name__}"
+    except smtplib.SMTPException as e:
+        return None, f"SMTP error: {type(e).__name__}"
+
+    detail = msg.decode(errors="replace")[:120] if isinstance(msg, bytes) else str(msg)[:120]
+    if code in (250, 251):
+        return True, f"mailbox accepted ({code})"
+    if code in (550, 551, 553):
+        return False, f"mailbox rejected ({code}): {detail}"
+    # 450/451/452/421 are greylisting or rate limiting — genuinely unknown
+    return None, f"inconclusive ({code}): {detail}"
+
+
+def best_candidate(emails: list[str]) -> tuple[str | None, Verdict | None]:
+    """Verify candidates in order; return the first accepted, else the first plausible."""
+    fallback: tuple[str, Verdict] | None = None
+    for email in emails:
+        v = verify(email)
+        if v.confidence == "verified":
+            return email, v
+        if v.confidence == "pattern-guessed" and fallback is None:
+            fallback = (email, v)
+    if fallback:
+        return fallback
+    return None, None

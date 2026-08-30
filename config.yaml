@@ -1,0 +1,106 @@
+# JobHunter configuration
+llm:
+  base_url: "http://localhost:11434"
+  # 8 GB Mac -> qwen3:4b. If you upgrade RAM / use another machine, switch to qwen3:8b or qwen3:14b.
+  model: "qwen3:4b"
+  embed_model: "nomic-embed-text"
+  # thinking mode off for speed on bulk tasks
+  keep_alive: "30m"       # keep models resident; a reload mid-run costs minutes on 8 GB
+  options:
+    temperature: 0.4
+    num_ctx: 8192
+    num_predict: 900      # cap generation — rubric/draft outputs are short by design
+
+search:
+  # salary filter, in INR lakhs per annum. Jobs in other currencies are converted (approx).
+  min_lpa: 24
+  max_lpa: 200            # keep the MVRX-Labs-style outliers
+  usd_to_inr: 88
+  eur_to_inr: 95
+  target_roles:
+    - "AI Engineer"
+    - "ML Engineer"
+    - "Machine Learning Engineer"
+    - "LLM Engineer"
+    - "GenAI Engineer"
+    - "Applied AI"
+    - "Software Engineer"
+    - "SDE"
+    - "Backend Engineer"
+    - "Founding Engineer"
+    - "Research Engineer"
+  locations_ok: ["india", "remote", "bengaluru", "bangalore", "hyderabad", "mumbai", "pune", "delhi", "gurgaon", "gurugram", "noida", "chennai", "worldwide", "anywhere"]
+  # jobs asking for more YOE than this are penalized (user is a fresher / new grad)
+  max_yoe: 3
+
+matching:
+  # Cheap prefilter before the expensive LLM rubric pass.
+  # nomic-embed-text puts almost all resume<->JD pairs in a narrow 0.55-0.84 band, so an
+  # absolute cutoff is meaningless on its own — the percentile does the real work and the
+  # absolute value is only a floor. Raise the percentile to score fewer, better jobs.
+  embed_prefilter: 0.60
+  embed_prefilter_percentile: 70   # only the top 30% of jobs reach the LLM
+  # shortlist_probability >= this -> "high match", triggers notification + contact discovery
+  high_match_threshold: 65
+
+contacts:
+  max_per_company: 20
+  github_token: ""        # optional: personal access token raises rate limits 60/hr -> 5000/hr
+  hunter_api_key: ""      # optional: hunter.io free tier (25 searches/mo)
+  # MX lookup always runs. The SMTP RCPT probe is OFF by default and should stay off:
+  # residential ISPs block outbound port 25, and Google/Microsoft accept every recipient
+  # at the edge, so a 250 proves nothing. It also risks getting your IP listed.
+  # Turn it on only from a host with clean port-25 egress.
+  smtp_verify: false
+
+outreach:
+  daily_send_cap: 25
+  followup_after_days: 5
+  max_followups: 1
+  send_window: [10, 19]   # local hours between which sends happen
+  user_name: "Tejmul Movin"
+  user_headline: "AI/ML Engineer • B.Tech CS+AI '27, Newton School of Technology"
+  user_links:
+    - "github.com/Tejmul"
+    - "linkedin.com/in/tejmulmovin-softwareengineer"
+    - "spylook.vercel.app"
+  # reply-to shown in drafts; the Gmail account you OAuth with is the actual sender
+  user_email: "sansar.t23csai@nst.rishihood.edu.in"
+
+gmail:
+  credentials_file: "secrets/gmail_credentials.json"   # OAuth client from Google Cloud Console
+  token_file: "secrets/gmail_token.json"
+
+notifications:
+  macos: true
+
+sources:
+  # toggle individual scrapers; Playwright ones are off by default (slowest + most fragile)
+  greenhouse: true
+  lever: true
+  ashby: true
+  hn_hiring: true
+  remoteok: true
+  wwr: true
+  yc: true
+  wellfound: false
+  cutshort: false
+  instahyre: false
+  # polite scraping
+  request_timeout: 25
+  concurrency: 8
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+
+scheduler:
+  scrape_hour: 8          # daily full scrape+score at this local hour
+  reply_poll_minutes: 60  # how often to poll Gmail for replies
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  # Next dev falls back to 3001/3002 when 3000 is taken, so allow the neighbours too
+  cors_origins: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000"]
+
+db_path: "jobhunter.db"
+profile_path: "profile/profile.json"
+resume_path: "profile/resume.pdf"
